@@ -1,0 +1,9 @@
+# v0.5.0 - Feb 2026 - Re-organized the project structure in prep for public release on Github
+# v0.3.0 - Feb 2026 - Add exercise to configure SASWORK for multiple storage providers
+# v0.2.5 - Jan 2025 - Add alternative steps to 3SSC-AWS exercise to provide SASWORK GeV that use a static, shared path to support ESM use of hostPath-access to SASWORK
+# v0.2.4 - Dec 2025 - Refine OpenShift SCC for CAS and SPRE use of GeV
+# v0.2.3 - Dec 2025 - Add exercise to deploy Viya with Project Mountpoint guidance to Red Hat OpenShift (OCP)
+# v0.2.2 - Dec 2025 - Add exercise to deploy Viya with Project Mountpoint guidance to Google Cloud Platform (GCP) 
+# v0.2.1 - Dec 2025 - Add exercise to deploy Viya with Project Mountpoint guidance to Microsoft Azure Kubernetes Service (AKS)
+# v0.2.0 - Dec 2025 - Add exercise to deploy Viya with Project Mountpoint guidance to Amazon EKS
+# v0.1.0 - Mov 2025 - Inital beta release, includes Three Starter Storage Classes and Checkpoint-Restart

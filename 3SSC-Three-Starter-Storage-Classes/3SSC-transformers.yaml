@@ -1,0 +1,198 @@
+---
+# Configures the PersistentVolumeClaims of selected Viya services to use the "viya-shared-sc " storage class
+apiVersion: builtin 
+kind: PatchTransformer
+metadata:
+  name: patch-pvc-SC
+patch: |-
+  - op: replace
+    path: /spec/storageClassName
+    value: viya-shared-sc 
+target:
+  kind: PersistentVolumeClaim
+  annotationSelector: |
+    sas.com/component-name in (
+      sas-backup-job,
+      sas-commonfiles,
+      sas-cas-operator,
+      sas-data-quality-services,
+      sas-event-stream-processing-studio-app,
+      sas-pyconfig,
+      sas-risk-cirrus-search,
+      sas-risk-modeling-core
+    )
+---
+# Configures the PersistentVolumeClaims of selected Viya services to use the "viya-standard-sc " storage class 
+apiVersion: builtin
+kind: PatchTransformer
+metadata:
+  name: patch-statefulsets-SC
+patch: |-
+  - op: replace
+    path: /spec/volumeClaimTemplates/0/spec/storageClassName
+    value: viya-standard-sc 
+target:
+  kind: StatefulSet
+  annotationSelector: |
+    sas.com/component-name in (
+      sas-consul-server,
+      sas-rabbitmq-server,
+      sas-redis-server
+    )
+---
+# Configures the OpenDistroCluster to use the "viya-standard-sc " storage class 
+apiVersion: builtin
+kind: PatchTransformer
+metadata:
+  name: patch-opendistro-cluster-SC
+patch: |-
+  - op: replace
+    path: /spec/defaultStorageClassName
+    value: viya-standard-sc 
+target:
+  kind: OpenDistroCluster
+  name: sas-opendistro
+---
+# Configures the Crunchy Postgres Cluster to use the "viya-standard-sc " storage class
+apiVersion: builtin
+kind: PatchTransformer
+metadata:
+  name: patch-postgres-SC
+patch: |-
+  - op: replace
+    path: /spec/instances/0/dataVolumeClaimSpec/storageClassName
+    value: viya-standard-sc 
+  - op: replace
+    path: /spec/backups/pgbackrest/repos/0/volume/volumeClaimSpec/storageClassName
+    value: viya-standard-sc 
+target:
+  group: postgres-operator.crunchydata.com
+  kind: PostgresCluster
+  name: sas-crunchy-platform-postgres
+  version: v1beta1
+---
+# Configures CAS to use a new generic ephemeral volume for its cache.
+# Instead of using the default "/cas/cache" as an emptyDir, add a new mount 
+# called "/cas/cache-scratch" and define it as a generic ephemeral volume using the 
+# "viya-scratch-sc " storage class. And set the CASENV_CAS_DISK_CACHE environment variable 
+# to specify this new mount path.
+apiVersion: builtin
+kind: PatchTransformer
+metadata:
+  name: patch-cas-cache-SC
+patch: |-
+  - op: add
+    path: /spec/controllerTemplate/spec/volumes/-
+    value:
+      name: cas-cache-gev
+      ephemeral:
+        volumeClaimTemplate:
+          spec:
+            accessModes: [ "ReadWriteOnce" ]
+            storageClassName: "viya-scratch-sc"
+            resources:
+              requests:
+                storage: 50Gi
+  - op: add
+    path: /spec/controllerTemplate/spec/containers/0/volumeMounts/-
+    value:
+      name: cas-cache-gev
+      mountPath: /cas/cache-scratch
+  - op: add
+    path: /spec/controllerTemplate/spec/containers/0/env/-
+    value:
+      name: CASENV_CAS_DISK_CACHE
+      value: "/cas/cache-scratch"
+target:
+  version: v1alpha1
+  group: viya.sas.com
+  kind: CASDeployment
+  # # Target filtering: chose/uncomment one of these option:
+  # #    To target only the default CAS server (cas-shared-default) :
+  # labelSelector: "sas.com/cas-server-default"
+  # #    To target only a single CAS server (e.g. MyCAS) other than default:
+  # name: {{MyCAS}}
+  # #    To target all CAS Servers
+  name: .*
+---
+# Delete existing tmp volume from SPRE server podTemplates
+apiVersion: builtin
+kind: PatchTransformer
+metadata:
+  name: delete-spre-tmp-volume
+patch: |-
+  apiVersion: v1
+  kind: PodTemplate
+  metadata:
+    name: sas-compute-job-config
+  template:
+    spec:
+      volumes:
+        - $patch: delete
+          name: tmp
+target:
+    kind: PodTemplate
+    annotationSelector: "sas.com/kustomize-base=sas-programming-environment"
+---
+# Add new tmp volume to SPRE server podTemplates
+apiVersion: builtin
+kind: PatchTransformer
+metadata:
+  name: add-spre-tmp-volume
+patch: |-
+  - op: add
+    path: /template/spec/volumes/-
+    value:
+      name: tmp
+      ephemeral:
+        volumeClaimTemplate:
+          spec:
+            accessModes: [ "ReadWriteOnce" ]
+            storageClassName: viya-scratch-sc 
+            resources:
+              requests:
+                storage: 64Gi
+target:
+    kind: PodTemplate
+    annotationSelector: "sas.com/kustomize-base=sas-programming-environment"
+---
+# Delete existing viya volume from SPRE server podTemplates
+apiVersion: builtin
+kind: PatchTransformer
+metadata:
+  name: delete-spre-viya-volume
+patch: |-
+  apiVersion: v1
+  kind: PodTemplate
+  metadata:
+    name: sas-compute-job-config
+  template:
+    spec:
+      volumes:
+        - $patch: delete
+          name: viya
+target:
+    kind: PodTemplate
+    annotationSelector: "sas.com/kustomize-base=sas-programming-environment"
+---
+# Add new viya volume to SPRE server podTemplates
+apiVersion: builtin
+kind: PatchTransformer
+metadata:
+  name: add-spre-viya-volume
+patch: |-
+  - op: add
+    path: /template/spec/volumes/-
+    value:
+      name: viya
+      ephemeral:
+        volumeClaimTemplate:
+          spec:
+            accessModes: [ "ReadWriteOnce" ]
+            storageClassName: viya-scratch-sc 
+            resources:
+              requests:
+                storage: 64Gi
+target:
+    kind: PodTemplate
+    annotationSelector: "sas.com/kustomize-base=sas-programming-environment"
