@@ -125,7 +125,7 @@ And clusterrole and -binding definitions for SAS Workload Orchestrator:
 
 ```bash
 # Insert the resource definition for Ingress TLS certs
-yq -i '.resources += ["sas-bases/overlays/sas-workload-orchestrator"]' kustomization.yaml
+yq -i '.resources += ["sas-bases/overlays/sas-workload-orchestrator/cluster-role"]' kustomization.yaml
 ```
 
 > Useful because one of our storage patterns is specific to that functionality.

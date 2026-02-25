@@ -196,7 +196,7 @@ Now we need to create the required configuration files that will drive SAS Viya'
       - sas-bases/overlays/internal-elasticsearch
       - sas-bases/overlays/update-checker
       - sas-bases/overlays/cas-server/auto-resources
-      - sas-bases/overlays/sas-workload-orchestrator
+      - sas-bases/overlays/sas-workload-orchestrator/cluster-role
     configurations:
       - sas-bases/overlays/required/kustomizeconfig.yaml
     transformers:
