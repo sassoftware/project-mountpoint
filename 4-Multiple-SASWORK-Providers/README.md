@@ -141,7 +141,7 @@ Referring to the diagram above, it will create copies of the specified B/C/C Con
 1.  Show the help text:
 
     ```text
-    > $PMP_HOME/bin/multi-saswork-tool.sh
+    $ bash $PMP_HOME/bin/multi-saswork-tool.sh
 
     Usage: ./multi-saswork-tool.sh ROOTNAME STORAGE CONTEXT-TYPE CONTEXT-NAME
       ROOTNAME: Base name for new resources

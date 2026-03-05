@@ -6,15 +6,19 @@
 # multi-saswork-tool.sh - helper for setting up multiple SASWORK providers
 # Purpose: Streamlined tool to create new SASWORK configurations in SAS Viya
 # 
-# Usage: multi-saswork-tool.sh ROOTNAME STORAGE CONTEXT-TYPE CONTEXT-NAME
-#   ROOTNAME: Base name for new resources
+# Usage: multi-saswork-tool.sh BASENAME STORAGE CONTEXT-TYPE CONTEXT-NAME
+#   BASENAME: Base name for new resources
 #   STORAGE: 'emptyDir', 'sc:storage-class-name', or 'pvc:pvc-name'
 #   CONTEXT-TYPE: "compute", "batch", "connect", or "launcher"
 #   CONTEXT-NAME: Name of existing context to clone from
 #
+# Commonly used:
+# Example: multi-saswork-tool.sh fast-saswork emptyDir batch   "default"
 # Example: multi-saswork-tool.sh fast-saswork emptyDir compute "SAS Studio compute context"
-# Example: multi-saswork-tool.sh fast-saswork emptyDir launcher "SAS/CONNECT service launcher context"
+#
+# Unlikely, special cases:
 # Example: multi-saswork-tool.sh fast-saswork emptyDir connect "default-launcher"
+# Example: multi-saswork-tool.sh fast-saswork emptyDir launcher "SAS Studio launcher context"
 #
 # Can also be sourced to use individual functions:
 #   source multi-saswork-tool.sh
@@ -30,33 +34,44 @@ create_podtemplate_emptydir() {
     local source_template="$1"
     local new_template="$2"
     local output_file="${WORK_DIR}/definePT_${new_template}.json"
-    
-    echo "Creating pod template: ${new_template} (emptyDir)"
-    
+
+    # First, verify the source template has a "viya" volume
+    echo "        Check pod template specifies a "viya" volume for SASWORK"
+
+    if ! kubectl get podtemplate "${source_template}" -n "${VIYA_NS}" -o json 2>/dev/null | jq -e '.template.spec.volumes[] | select(.name == "viya")' > /dev/null 2>&1; then
+        echo -e "\nERROR: Source pod template \"${source_template}\" does not have a 'viya' volume (required for SASWORK)\n"
+        return 1
+    fi
+
+    echo "        Creating pod template: ${new_template} (emptyDir)"
+
     kubectl get podtemplate "${source_template}" -n "${VIYA_NS}" -o json | \
     jq --arg new_name "${new_template}" '.metadata.name = $new_name' | \
     jq 'del(.metadata.uid, .metadata.resourceVersion, .metadata.creationTimestamp, .metadata.generation, .metadata.managedFields)' | \
     jq '(.template.spec.volumes[] | select(.name == "viya")) |= {name: "viya", emptyDir: {}}' \
     > "${output_file}"
     
+    # Note: the "viya" volume is where SPRE stores SASWORK data.
+    #       And fyi, the "tmp" volume is where the SPRE stores its ECE_Cache data.
+
     if [[ $? -ne 0 ]]; then
-        echo "  ERROR: Failed to create ${output_file}"
+        echo -e "\nERROR: Failed to create ${output_file}\n"
         return 1
     fi
     
     # Verify the viya volume is emptyDir
     local vol_check=$(jq -r '.template.spec.volumes[] | select(.name == "viya") | has("emptyDir")' "${output_file}")
     if [[ "${vol_check}" != "true" ]]; then
-        echo "  ERROR: viya volume is not emptyDir in ${output_file}"
+        echo -e "\nERROR: viya volume is not emptyDir in ${output_file}\n"
         return 1
     fi
     
     # Apply to Kubernetes
     kubectl apply -f "${output_file}"
     if [[ $? -eq 0 ]]; then
-        echo "  Pod template created successfully"
+        echo -e "\nPod template created successfully\n"
     else
-        echo "  ERROR: Failed to apply pod template"
+        echo -e "\nERROR: Failed to apply pod template\n"
         return 1
     fi
 }
@@ -69,12 +84,19 @@ create_podtemplate_sc() {
     local output_file="${WORK_DIR}/definePT_${new_template}.json"
 
     echo "Creating pod template: ${new_template} (${storage_class})"
+    # First, verify the source template has a "viya" volume
+    if ! kubectl get podtemplate "${source_template}" -n "${VIYA_NS}" -o json 2>/dev/null | jq -e '.template.spec.volumes[] | select(.name == "viya")' > /dev/null 2>&1; then
+        echo "  ERROR: Source pod template does not have a 'viya' volume (required for SASWORK)"
+        return 1
+    fi
+    
+    local vol_size="${4:-${PT_VOLUME_SIZE}}"
 
     # Copy the source pod template and modify it
     kubectl get podtemplate "${source_template}" -n "${VIYA_NS}" -o json | \
     jq --arg new_name "${new_template}" '.metadata.name = $new_name' | \
     jq 'del(.metadata.uid, .metadata.resourceVersion, .metadata.creationTimestamp, .metadata.generation, .metadata.managedFields)' | \
-    jq --arg sc "${storage_class}" '(.template.spec.volumes[] | select(.name == "viya")).ephemeral.volumeClaimTemplate.spec.storageClassName = $sc' \
+    jq --arg sc "${storage_class}" --arg size "${vol_size}" '(.template.spec.volumes[] | select(.name == "viya")) |= {name: "viya", ephemeral: {volumeClaimTemplate: {spec: {accessModes: ["ReadWriteOnce"], storageClassName: $sc, resources: {requests: {storage: $size}}}}}}' \
     > "${output_file}"
 
     if [[ $? -ne 0 ]]; then
@@ -99,7 +121,6 @@ create_podtemplate_sc() {
     fi
 }
 
-
 # Function to create pod template with existing PVC
 create_podtemplate_pvc() {
     local source_template="$1"
@@ -108,7 +129,12 @@ create_podtemplate_pvc() {
     local output_file="${WORK_DIR}/definePT_${new_template}.json"
 
     echo "Creating pod template: ${new_template} (PVC: ${pvc_name})"
-
+    # First, verify the source template has a "viya" volume
+    if ! kubectl get podtemplate "${source_template}" -n "${VIYA_NS}" -o json 2>/dev/null | jq -e '.template.spec.volumes[] | select(.name == "viya")' > /dev/null 2>&1; then
+        echo "  ERROR: Source pod template does not have a 'viya' volume (required for SASWORK)"
+        return 1
+    fi
+    
     # Verify PVC exists
     if ! kubectl get pvc "${pvc_name}" -n "${VIYA_NS}" &>/dev/null; then
         echo "  ERROR: PVC '${pvc_name}' does not exist in namespace '${VIYA_NS}'"
@@ -155,7 +181,7 @@ create_launcher_context() {
     echo "  Copying configuration from: ${source_context}"
     
     # Fetch the source launcher context
-    sas-viya launcher contexts show --name "${source_context}" > "${template_file}.source" 2>&1
+    sas-viya --output fulljson launcher contexts show --name "${source_context}" > "${template_file}.source" 2>&1
     if [ $? -ne 0 ]; then
         echo "  WARNING: Could not fetch source context '${source_context}', creating basic context with standard allowlist"
         sas-viya launcher contexts create \
@@ -174,7 +200,7 @@ create_launcher_context() {
        'del(.id, .createdBy, .creationTimestamp, .modifiedBy, .modifiedTimestamp, .links, .version) |
         .name = $name |
         .description = $desc |
-        .kubernetes.jobPodTemplateName = $podtemplate' \
+        .kubernetes |= . + {jobPodTemplateName: $podtemplate}' \
        "${template_file}.source" > "${template_file}"
     
     if [ $? -ne 0 ]; then
@@ -198,6 +224,7 @@ create_launcher_context() {
         --launch-type "${LAUNCH_TYPE}" \
         --json-file "${template_file}" 2>&1 | tee "${WORK_DIR}/launcher_${pod_template}.log"
 }
+
 # Function to create batch context
 create_batch_context() {
     local name="$1"
@@ -241,14 +268,15 @@ EOF
 #==============================================================================
 
 main() {
-    # defaults
     local VIYA_NS=${VIYA_NS:-"$MY_NS"}
+
+    local PT_VOLUME_SIZE=${PT_VOLUME_SIZE:-"200Gi"}
     local VIYA_URL=$(yq '.configMapGenerator[].literals[] | select(contains("SAS_SERVICES_URL"))' $HOME/project/deploy/$VIYA_NS/kustomization.yaml | cut -d= -f2)
 
     # Check if namespace exists
     if ! kubectl get namespace "${VIYA_NS}" &>/dev/null; then
-        echo "ERROR: Namespace '${VIYA_NS}' does not exist in the cluster"
-        echo "       \"export MY_NS=your-viya-namespace\" and try again"
+        echo -e "\nERROR: Namespace '${VIYA_NS}' does not exist in the cluster"
+        echo -e "       \"export MY_NS=your-viya-namespace\" and try again\n"
         return 1
     fi
 
@@ -268,17 +296,17 @@ main() {
     local STORAGE_TYPE=""
     local STORAGE_NAME=""
 
-    if [[ "${STORAGE}" == "emptyDir" ]]; then
+    if [[ "${STORAGE,,}" == "emptydir" ]]; then
         STORAGE_TYPE="emptyDir"
-    elif [[ "${STORAGE}" =~ ^sc:(.+)$ ]]; then
+    elif [[ "${STORAGE,,}" =~ ^sc:(.+)$ ]]; then
         STORAGE_TYPE="storageClass"
         STORAGE_NAME="${BASH_REMATCH[1]}"
-    elif [[ "${STORAGE}" =~ ^pvc:(.+)$ ]]; then
+    elif [[ "${STORAGE,,}" =~ ^pvc:(.+)$ ]]; then
         STORAGE_TYPE="pvc"
         STORAGE_NAME="${BASH_REMATCH[1]}"
     else
-        echo "ERROR: Invalid STORAGE format '${STORAGE}'"
-        echo "       Must be 'emptyDir', 'sc:storage-class-name', or 'pvc:pvc-name'"
+        echo -e "\nERROR: Invalid STORAGE format '${STORAGE}'\n"
+        echo -e "       Must be 'emptyDir', 'sc:storage-class-name', or 'pvc:pvc-name'\n"
         return 1
     fi
     local CONTEXT_TYPE="$3"
@@ -296,7 +324,7 @@ main() {
         compute|batch|connect|launcher)
             ;;
         *)
-            echo "ERROR: Invalid CONTEXT-TYPE '${CONTEXT_TYPE}'. Must be 'compute', 'batch', 'connect', or 'launcher'"
+            echo -e "\nERROR: Invalid CONTEXT-TYPE '${CONTEXT_TYPE}'. Must be 'compute', 'batch', 'connect', or 'launcher'\n"
             return 1
             ;;
     esac
@@ -344,18 +372,18 @@ main() {
 
             # If we have the ID but not the name, look up the name
             if [[ -z "${LAUNCHER_CONTEXT_NAME}" ]] && [[ -n "${LAUNCHER_CONTEXT_ID}" ]]; then
-                echo "  Found launcher context ID: ${LAUNCHER_CONTEXT_ID}, looking up name..."
+                echo "        Found launcher context ID: ${LAUNCHER_CONTEXT_ID}, looking up name..."
                 LAUNCHER_CONTEXT_NAME=$(sas-viya --output fulljson launcher contexts show --id "${LAUNCHER_CONTEXT_ID}" | jq -r '.name // empty')
             fi
 
             # Validate we have a launcher context name
             if [[ -z "${LAUNCHER_CONTEXT_NAME}" ]]; then
-                echo "ERROR: Could not find launcher context for ${CONTEXT_TYPE} context '${CONTEXT_NAME}'"
-                echo "  Checked for: launchContext.contextName, launchContext.contextId, launcherContextName, launcherContextId"
+                echo -e "\nERROR: Could not find launcher context for ${CONTEXT_TYPE} context '${CONTEXT_NAME}'"
+                echo -e "       Checked for: launchContext.contextName, launchContext.contextId, launcherContextName, launcherContextId\n"
                 return 1
             fi
 
-            echo "  Found launcher context: ${LAUNCHER_CONTEXT_NAME}"
+            echo "        Found launcher context: ${LAUNCHER_CONTEXT_NAME}"
             echo
 
             # Step 2: Get the launcher context details to find pod template
@@ -366,11 +394,11 @@ main() {
             PODTEMPLATE_NAME=$(jq -r '.kubernetes.jobPodTemplateName' "${LAUNCHER_JSON}")
 
             if [[ -z "${PODTEMPLATE_NAME}" ]] || [[ "${PODTEMPLATE_NAME}" == "null" ]]; then
-                echo "ERROR: Could not find pod template for launcher context '${LAUNCHER_CONTEXT_NAME}'"
+                echo -e "\nERROR: Could not find pod template for launcher context '${LAUNCHER_CONTEXT_NAME}'"
                 return 1
             fi
 
-            echo "  Found pod template: ${PODTEMPLATE_NAME}"
+            echo "        Found pod template: ${PODTEMPLATE_NAME}"
             echo
 
             # Step 3: Create new pod template with modified storage
@@ -381,7 +409,7 @@ main() {
                     create_podtemplate_emptydir "${PODTEMPLATE_NAME}" "${NEW_PODTEMPLATE_NAME}"
                     ;;
                 storageClass)
-                    create_podtemplate_sc "${PODTEMPLATE_NAME}" "${NEW_PODTEMPLATE_NAME}" "${STORAGE_NAME}"
+                    create_podtemplate_sc "${PODTEMPLATE_NAME}" "${NEW_PODTEMPLATE_NAME}" "${STORAGE_NAME}" "${PT_VOLUME_SIZE}"
                     ;;
                 pvc)
                     create_podtemplate_pvc "${PODTEMPLATE_NAME}" "${NEW_PODTEMPLATE_NAME}" "${STORAGE_NAME}"
@@ -389,7 +417,7 @@ main() {
             esac
 
             if [[ $? -ne 0 ]]; then
-                echo "ERROR: Failed to create pod template"
+                echo -e "\nERROR: Failed to create pod template\n"
                 return 1
             fi
             echo
@@ -398,9 +426,9 @@ main() {
             echo "Step 4: Creating new launcher context..."
             local LAUNCHER_DESC="Launcher context for ${ROOTNAME} (${STORAGE})"
 
-            create_launcher_context "${NEW_LAUNCHER_NAME}" "${LAUNCHER_DESC}" "${NEW_PODTEMPLATE_NAME}"
+            create_launcher_context "${NEW_LAUNCHER_NAME}" "${LAUNCHER_DESC}" "${NEW_PODTEMPLATE_NAME}" "${LAUNCHER_CONTEXT_NAME}"
             if [[ $? -ne 0 ]]; then
-                echo "ERROR: Failed to create launcher context"
+                echo -e "\nERROR: Failed to create launcher context\n"
                 return 1
             fi
             echo
@@ -423,7 +451,7 @@ main() {
             esac
 
             if [[ $? -ne 0 ]]; then
-                echo "ERROR: Failed to create ${CONTEXT_TYPE} context"
+                echo -e "\nERROR: Failed to create ${CONTEXT_TYPE} context\n"
                 return 1
             fi
 
@@ -448,11 +476,11 @@ main() {
             PODTEMPLATE_NAME=$(jq -r '.kubernetes.jobPodTemplateName' "${LAUNCHER_JSON}")
 
             if [[ -z "${PODTEMPLATE_NAME}" ]] || [[ "${PODTEMPLATE_NAME}" == "null" ]]; then
-                echo "ERROR: Could not find pod template for launcher context '${LAUNCHER_CONTEXT_NAME}'"
+                echo -e "\nERROR: Could not find pod template for launcher context '${LAUNCHER_CONTEXT_NAME}'\n"
                 return 1
             fi
 
-            echo "  Found pod template: ${PODTEMPLATE_NAME}"
+            echo "        Found pod template: ${PODTEMPLATE_NAME}"
             echo
 
             # Step 2: Create new pod template with modified storage
@@ -463,7 +491,7 @@ main() {
                     create_podtemplate_emptydir "${PODTEMPLATE_NAME}" "${NEW_PODTEMPLATE_NAME}"
                     ;;
                 storageClass)
-                    create_podtemplate_sc "${PODTEMPLATE_NAME}" "${NEW_PODTEMPLATE_NAME}" "${STORAGE_NAME}"
+                    create_podtemplate_sc "${PODTEMPLATE_NAME}" "${NEW_PODTEMPLATE_NAME}" "${STORAGE_NAME}" "${PT_VOLUME_SIZE}"
                     ;;
                 pvc)
                     create_podtemplate_pvc "${PODTEMPLATE_NAME}" "${NEW_PODTEMPLATE_NAME}" "${STORAGE_NAME}"
@@ -471,7 +499,7 @@ main() {
             esac
 
             if [[ $? -ne 0 ]]; then
-                echo "ERROR: Failed to create pod template"
+                echo -e "\nERROR: Failed to create pod template\n"
                 return 1
             fi
             echo
@@ -480,9 +508,9 @@ main() {
             echo "Step 3: Creating new launcher context..."
             local LAUNCHER_DESC="Launcher context for ${ROOTNAME} (${STORAGE})"
 
-            create_launcher_context "${NEW_LAUNCHER_NAME}" "${LAUNCHER_DESC}" "${NEW_PODTEMPLATE_NAME}"
+            create_launcher_context "${NEW_LAUNCHER_NAME}" "${LAUNCHER_DESC}" "${NEW_PODTEMPLATE_NAME}" "${CONTEXT_NAME}"
             if [[ $? -ne 0 ]]; then
-                echo "ERROR: Failed to create launcher context"
+                echo -e "\nERROR: Failed to create launcher context\n"
                 return 1
             fi
 

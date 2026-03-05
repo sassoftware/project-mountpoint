@@ -217,6 +217,18 @@ PYVIYA_EOF
             echo "# SSL certificates handled by wrapper scripts" >> "$PYVIYA_CONFIG"
         fi
         
+        # Prepopulate the sas-viya config file
+        cat << CFGEOF > $HOME/.sas/config.json
+{
+  "Default": {
+    "ansi-colors-enabled": "true",
+    "oauth-client-id": "sas.cli",
+    "output": "fulljson",
+    "sas-endpoint": "https://$MY_VIYA_FQDN"
+  }
+}
+CFGEOF
+
         log_success "SSL certificates configured with isolated wrapper approach for both sas-viya and pyviyatools"
         log_info "SSL environment variables will only be active when using sas-viya or pyviyatools wrappers"
     else
@@ -232,7 +244,7 @@ PYVIYA_EOF
     log_info ""
     log_info "Next steps:"
     log_info "1. Source environment: source ~/.bashrc"
-    log_info "2. Create profile: sas-viya profile init"
+    log_info "2. Create profile: sas-viya profile init [Already done :)]"
     log_info "3. Login: sas-viya auth login"
     log_info "4. Test pyviyatools: pyviyatools showsetup.py"
 }
