@@ -1,3 +1,16 @@
+# Link to this file in kustomization.yaml as a TRANSFORMER.
+#
+# This file modifies the significant storage used by SAS Viya services to reference dynamic volumes
+# to be created by the Three Starter Storage Classes. 
+#
+# REQUIRES: Three storage classes:
+#           - storageClassName: viya-shared-sc
+#           - storageClassName: viya-standard-sc
+#           - storageClassName: viya-scratch-sc
+#
+#           You can change the name(s) as desired, as long as they match real SC name(s).
+#           You can change the assignments as desired as well, split up assignments, refer to
+#           additional storage classes for specific needs, etc. This document is an example.
 ---
 # Configures the PersistentVolumeClaims of selected Viya services to use the "viya-shared-sc " storage class
 apiVersion: builtin 

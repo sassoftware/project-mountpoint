@@ -1,0 +1,35 @@
+# Link to this file in kustomization.yaml as a RESOURCE.
+#
+# This file contains a PersistentVolumeClaim resource definition for an RWX volume named "saswork-rwx-pvc".
+# The PVC is configured to use the "viya-shared-sc" storage class and has a storage request of 1Ti.
+#
+# REQUIRES: An RWX storage class. See:
+#           - storageClassName: viya-shared-sc
+#
+#           You can change the name(s) as desired, as long as they match real SC name(s).
+---
+# DATAMART: Define PVC for new RWX volume, named for use as "datamart" volume in SPRE server podTemplates
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: spre-rwx-datamart-pvc
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: viya-shared-sc  # Specify your RWX storage class
+  resources:
+    requests:
+      storage: 1Ti  # Adjust size based on your datamart requirements
+---
+# GRIDWORK: Define PVC for new RWX volume, named for use as "gridwork" volume in SPRE server podTemplates
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: spre-rwx-gridwork-pvc
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: viya-shared-sc  # Specify your RWX storage class
+  resources:
+    requests:
+      storage: 1Ti  # Adjust size based on your gridwork requirements

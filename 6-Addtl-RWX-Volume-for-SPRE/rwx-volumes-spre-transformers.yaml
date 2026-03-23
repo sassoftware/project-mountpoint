@@ -1,0 +1,52 @@
+# Link to this file in kustomization.yaml as a TRANSFORMER.
+# 
+# This file contains two PatchTransformers that add new RWX volumes to the SPRE server podTemplates.
+# The first transformer adds a new RWX volume for GRIDWORK, and the second transformer adds a new RWX volume for DATAMART.
+#
+# REQUIRES: The PVC referred to here must exist before applying these transformers. See:
+#           - claimName: spre-rwx-datamart-pvc     
+#           - claimName: spre-rwx-gridwork-pvc
+#
+#           You can change the names as desired, as long as they match real PVC names.
+---
+# DATAMART: Add new RWX volume to SPRE server podTemplates
+apiVersion: builtin
+kind: PatchTransformer
+metadata:
+  name: add-spre-rwx-pvc-1
+patch: |-
+  - op: add
+    path: /template/spec/volumes/-
+    value:
+      name: rwx-spre-volume-1
+      persistentVolumeClaim:
+        claimName: spre-rwx-datamart-pvc
+  - op: add
+    path: /template/spec/containers/0/volumeMounts/-
+    value:
+      name: rwx-spre-volume-1
+      mountPath: /data/datamart
+target:
+    kind: PodTemplate
+    annotationSelector: "sas.com/kustomize-base=sas-programming-environment"
+---
+# GRIDWORK: Add new RWX volume to SPRE server podTemplates
+apiVersion: builtin
+kind: PatchTransformer
+metadata:
+  name: add-spre-rwx-pvc-2
+patch: |-
+  - op: add
+    path: /template/spec/volumes/-
+    value:
+      name: rwx-spre-volume-2
+      persistentVolumeClaim:
+        claimName: spre-rwx-gridwork-pvc
+  - op: add
+    path: /template/spec/containers/0/volumeMounts/-
+    value:
+      name: rwx-spre-volume-2
+      mountPath: /data/gridwork
+target:
+    kind: PodTemplate
+    annotationSelector: "sas.com/kustomize-base=sas-programming-environment"
