@@ -11,60 +11,61 @@ Let's get this done. This page provides a streamlined deployment of SAS Viya to 
 
 Here's the plan:
 
-- [Deploy SAS Viya to AWS with 3 Starter Storage Classes](#deploy-sas-viya-to-aws-with-3-starter-storage-classes)
-    - [Basis](#basis)
-    - [Reserve a RACE collection](#reserve-a-race-collection)
-    - [Logon to RACE host(s)](#logon-to-race-hosts)
-    - [▶ PMP: Clone Project Mountpoint](#-pmp-clone-project-mountpoint)
-    - [Get Viya resources and assets](#get-viya-resources-and-assets)
-        - [Download Viya order assets](#download-viya-order-assets)
-        - [▶ PMP: Configure the Viya assets](#-pmp-configure-the-viya-assets)
-        - [▷ Status Check](#-status-check)
-    - [Infrastructure](#infrastructure)
-        - [Set up the AWS CLI](#set-up-the-aws-cli)
-        - [Identify yourself to AWS](#identify-yourself-to-aws)
-        - [Get the SAS Viya 4 Infrastructure-as-Code project](#get-the-sas-viya-4-infrastructure-as-code-project)
-        - [Patch viya4-iac-aws for Amazon FSx, if needed](#patch-viya4-iac-aws-for-amazon-fsx-if-needed)
-        - [Build the viya4-iac-aws container](#build-the-viya4-iac-aws-container)
-        - [Simplify commands](#simplify-commands)
-        - [Setup SSH key](#setup-ssh-key)
-        - [Which IAC-provisioned shared (RWX) storage?](#which-iac-provisioned-shared-rwx-storage)
-        - [Configure Terraform for desired AWS resources](#configure-terraform-for-desired-aws-resources)
-        - [Use Terraform to provision infrastructure](#use-terraform-to-provision-infrastructure)
-        - [Get k8s clients set up](#get-k8s-clients-set-up)
-        - [Enable SSH communication with the IAC-provided jumpbox in AWS](#enable-ssh-communication-with-the-iac-provided-jumpbox-in-aws)
-        - [▷ Status Check](#-status-check-1)
-    - [▶ PMP: Provision and configure storage in AWS](#-pmp-provision-and-configure-storage-in-aws)
-        - [AWS provides a storage class out-of-the-box](#aws-provides-a-storage-class-out-of-the-box)
-        - [RWO storage for `viya-standard-sc`: Amazon EBS](#rwo-storage-for-viya-standard-sc-amazon-ebs)
-        - [Local storage for `viya-scratch-sc`: Rancher local-path](#local-storage-for-viya-scratch-sc-rancher-local-path)
-        - [RWX storage for `viya-shared-sc`: NFS Server](#rwx-storage-for-viya-shared-sc-nfs-server)
-        - [▷ Status Check](#-status-check-2)
-    - [Provision and configure supporting 3rd-party resources](#provision-and-configure-supporting-3rd-party-resources)
-        - [Deploy GEL's demo LDAP service](#deploy-gels-demo-ldap-service)
-        - [Install OpenSSL as the certificate generator](#install-openssl-as-the-certificate-generator)
-        - [Confirm files match configuration](#confirm-files-match-configuration)
-        - [Install the Kubernetes Cluster Autoscaler](#install-the-kubernetes-cluster-autoscaler)
-        - [Install ingress-nginx](#install-ingress-nginx)
-        - [Establish a user-friendly DNS alias](#establish-a-user-friendly-dns-alias)
-        - [▷ Status Check](#-status-check-3)
-    - [Deploy the SAS Viya platform](#deploy-the-sas-viya-platform)
-        - [Install the Orchestration tool](#install-the-orchestration-tool)
-        - [Deploy SAS Viya](#deploy-sas-viya)
-        - [▷ Status Check](#-status-check-4)
-    - [Validate the SAS Viya platform](#validate-the-sas-viya-platform)
-        - [Review storage resources in Viya's namespace](#review-storage-resources-in-viyas-namespace)
-        - [Logon to SAS Viya](#logon-to-sas-viya)
-        - [As directed](#as-directed)
-        - [▷ Status Check](#-status-check-5)
-    - [Delete your environment](#delete-your-environment)
-        - [Uninstall Viya from Amazon EKS](#uninstall-viya-from-amazon-eks)
-        - [Destroy cloud resources](#destroy-cloud-resources)
-        - [▷ Status Check](#-status-check-6)
+- [Basis](#basis)
+- [Reserve a RACE collection](#reserve-a-race-collection)
+- [Logon to RACE host(s)](#logon-to-race-hosts)
+- [▶ PMP: Clone Project Mountpoint](#-pmp-clone-project-mountpoint)
+- [Get Viya resources and assets](#get-viya-resources-and-assets)
+    - [Download Viya order assets](#download-viya-order-assets)
+    - [▶ PMP: Configure the Viya assets](#-pmp-configure-the-viya-assets)
+    - [▷ Status Check](#-status-check)
+- [Infrastructure](#infrastructure)
+    - [Set up the AWS CLI](#set-up-the-aws-cli)
+    - [Identify yourself to AWS](#identify-yourself-to-aws)
+    - [Get the SAS Viya 4 Infrastructure-as-Code project](#get-the-sas-viya-4-infrastructure-as-code-project)
+    - [Patch viya4-iac-aws for Amazon FSx, if needed](#patch-viya4-iac-aws-for-amazon-fsx-if-needed)
+    - [Build the viya4-iac-aws container](#build-the-viya4-iac-aws-container)
+    - [Simplify commands](#simplify-commands)
+    - [Setup SSH key](#setup-ssh-key)
+    - [Which IAC-provisioned shared (RWX) storage?](#which-iac-provisioned-shared-rwx-storage)
+    - [Configure Terraform for desired AWS resources](#configure-terraform-for-desired-aws-resources)
+    - [Use Terraform to provision infrastructure](#use-terraform-to-provision-infrastructure)
+    - [Get k8s clients set up](#get-k8s-clients-set-up)
+    - [Enable SSH communication with the IAC-provided jumpbox in AWS](#enable-ssh-communication-with-the-iac-provided-jumpbox-in-aws)
+    - [▷ Status Check](#-status-check-1)
+- [▶ PMP: Provision and configure storage in AWS](#-pmp-provision-and-configure-storage-in-aws)
+    - [AWS provides a storage class out-of-the-box](#aws-provides-a-storage-class-out-of-the-box)
+    - [RWO storage for `viya-standard-sc`: Amazon EBS](#rwo-storage-for-viya-standard-sc-amazon-ebs)
+    - [Local storage for `viya-scratch-sc`: Rancher local-path](#local-storage-for-viya-scratch-sc-rancher-local-path)
+    - [RWX storage for `viya-shared-sc`: NFS Server](#rwx-storage-for-viya-shared-sc-nfs-server)
+    - [▷ Status Check](#-status-check-2)
+- [Provision and configure supporting 3rd-party resources](#provision-and-configure-supporting-3rd-party-resources)
+    - [Deploy GEL's demo LDAP service](#deploy-gels-demo-ldap-service)
+    - [Install OpenSSL as the certificate generator](#install-openssl-as-the-certificate-generator)
+    - [Confirm files match configuration](#confirm-files-match-configuration)
+    - [Install the Kubernetes Cluster Autoscaler](#install-the-kubernetes-cluster-autoscaler)
+    - [Install ingress-nginx](#install-ingress-nginx)
+    - [Establish a user-friendly DNS alias](#establish-a-user-friendly-dns-alias)
+    - [▷ Status Check](#-status-check-3)
+- [Deploy the SAS Viya platform](#deploy-the-sas-viya-platform)
+    - [Install the Orchestration tool](#install-the-orchestration-tool)
+    - [Deploy SAS Viya](#deploy-sas-viya)
+    - [▷ Status Check](#-status-check-4)
+- [Validate the SAS Viya platform](#validate-the-sas-viya-platform)
+    - [Review storage resources in Viya's namespace](#review-storage-resources-in-viyas-namespace)
+    - [Logon to SAS Viya](#logon-to-sas-viya)
+    - [As directed](#as-directed)
+    - [▷ Status Check](#-status-check-5)
+- [Delete your environment](#delete-your-environment)
+    - [Uninstall Viya from Amazon EKS](#uninstall-viya-from-amazon-eks)
+    - [Destroy cloud resources](#destroy-cloud-resources)
+    - [▷ Status Check](#-status-check-6)
 
 ## Basis
 
 The deployment process here is heavily borrowed from the [SAS® Viya®: Deployment on Amazon Elastic Kubernetes Service](https://learn.sas.com/course/view.php?id=6972) (learn.sas.com) workshop.
+
+> Currently optimized for SAS Viya at LTS-2026.03 running on Kubernetes 1.32.x - 1.35.x.
 
 
 
@@ -128,7 +129,7 @@ Let's get SAS Viya order assets and configure them.
     ```bash
     # Desired version of SAS Viya
     export MY_CADENCE_NAME='lts'
-    export MY_CADENCE_VERSION='2025.09'
+    export MY_CADENCE_VERSION='2026.03'
 
     # Remember it
     add_my_var MY_CADENCE_NAME
@@ -170,7 +171,7 @@ Let's get SAS Viya order assets and configure them.
     Recalled current workshop state:
     ---
     MY_CADENCE_NAME=lts
-    MY_CADENCE_VERSION=2025.09
+    MY_CADENCE_VERSION=2026.03
     MY_NS=viya
     MY_ORDERNUM=9D1ZB7
     MY_PREFIX=envoy-p41814
@@ -236,6 +237,9 @@ Now we need to create the required configuration files that will drive SAS Viya'
 
     > Note: This is basically the [initial kustomization.yaml](https://documentation.sas.com/?cdcId=itopscdc&cdcVersion=default&docsetId=dplyml0phy0dkr&docsetTarget=n0g237aqo6pz1in1t19wjb94j9bi.htm) shown in SAS documentation, but improved slightly:
     > - enables the "`sas-workload-orchestrator`" resources to add clusterrole and -binding
+    >
+    >   for Viya 2025.12 and later, append "`/cluster-role`"
+    >
     > - specifies the fully-qualified domain name for ingress host and the SAS services url
     >
     > Additional configuration to kustomization.yaml is provided later as those related elements are deployed.
@@ -344,11 +348,14 @@ First, let's check your credentials in a web browser:
 
     > Note: Each site is responsible to provide their own AWS subscription credentials for a real implementation.
 
-1.  Select the `your_site_role` account with the `Example` role:
 
-    > Note: If you don't see the `your_site_role` account or otherwise have a problem, then refer back to the [Register and Reserve](https://your-git-repo.example.com/GEL/workshops/Your_Project_Name-sas-viya-4-deployment-on-amazon-elastic-kubernetes-service/-/blob/main/01-Access_Your_Environment/01_001-Register_and_Reserve.md#get-registered-to-use-sas-resources) instructions of the original workshop.
+1.  Browse to the **AWS Console** site:
 
-If that worked okay, then let's get signed in with the AWS CLI:
+    > Note: Each site is responsible to provide their own AWS subscription credentials for a real implementation.
+
+    
+
+    If that worked okay, then let's get signed in with the AWS CLI...
 
 1.  Configure SSO for token renewal
 
@@ -608,7 +615,7 @@ The IAC is driven by a terraform variables file that we must create. As shown he
 1.  Create the TF Vars file to drive infrastructure:
 
     ```bash
-    K8S_VERSION="1.32"
+    K8S_VERSION="1.33"
 
     # Create the Terraform variables file for the IAC
     cat << EOF > ~/viya4-iac-aws/${MY_PREFIX}.tfvars

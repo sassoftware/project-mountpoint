@@ -124,7 +124,7 @@ EOF
 And clusterrole and -binding definitions for SAS Workload Orchestrator:
 
 ```bash
-# Insert the resource definition for Ingress TLS certs
+# Insert the clusterrole and -binding definitions for SWO
 yq -i '.resources += ["sas-bases/overlays/sas-workload-orchestrator/cluster-role"]' kustomization.yaml
 ```
 

@@ -30,6 +30,9 @@ set -o pipefail
 #==============================================================================
 
 # Function to create pod template with emptyDir
+#
+# SASWORK (viya vol.) and ECE CACHE (tmp vol.) are both modified to use emptyDir.
+# ------------------------
 create_podtemplate_emptydir() {
     local source_template="$1"
     local new_template="$2"
@@ -48,11 +51,11 @@ create_podtemplate_emptydir() {
     kubectl get podtemplate "${source_template}" -n "${VIYA_NS}" -o json | \
     jq --arg new_name "${new_template}" '.metadata.name = $new_name' | \
     jq 'del(.metadata.uid, .metadata.resourceVersion, .metadata.creationTimestamp, .metadata.generation, .metadata.managedFields)' | \
-    jq '(.template.spec.volumes[] | select(.name == "viya")) |= {name: "viya", emptyDir: {}}' \
+    jq '(.template.spec.volumes[] | select(.name == "viya" or .name == "tmp")) |= {name: .name, emptyDir: {}}' \
     > "${output_file}"
-    
+
     # Note: the "viya" volume is where SPRE stores SASWORK data.
-    #       And fyi, the "tmp" volume is where the SPRE stores its ECE_Cache data.
+    #       the "tmp" volume is where the SPRE stores its ECE_Cache data.
 
     if [[ $? -ne 0 ]]; then
         echo -e "\nERROR: Failed to create ${output_file}\n"
@@ -77,6 +80,9 @@ create_podtemplate_emptydir() {
 }
 
 # Function to create pod template with any storage class
+#
+# SASWORK (viya vol.) and ECE CACHE (tmp vol.) are both modified to use the same storage class.
+# ------------------------
 create_podtemplate_sc() {
     local source_template="$1"
     local new_template="$2"
@@ -96,8 +102,11 @@ create_podtemplate_sc() {
     kubectl get podtemplate "${source_template}" -n "${VIYA_NS}" -o json | \
     jq --arg new_name "${new_template}" '.metadata.name = $new_name' | \
     jq 'del(.metadata.uid, .metadata.resourceVersion, .metadata.creationTimestamp, .metadata.generation, .metadata.managedFields)' | \
-    jq --arg sc "${storage_class}" --arg size "${vol_size}" '(.template.spec.volumes[] | select(.name == "viya")) |= {name: "viya", ephemeral: {volumeClaimTemplate: {spec: {accessModes: ["ReadWriteOnce"], storageClassName: $sc, resources: {requests: {storage: $size}}}}}}' \
+    jq --arg sc "${storage_class}" --arg size "${vol_size}" '(.template.spec.volumes[] | select(.name == "viya" or .name == "tmp")) |= {name: .name, ephemeral: {volumeClaimTemplate: {spec: {accessModes: ["ReadWriteOnce"], storageClassName: $sc, resources: {requests: {storage: $size}}}}}}' \
     > "${output_file}"
+
+    # Note: the "viya" volume is where SPRE stores SASWORK data.
+    #       the "tmp" volume is where the SPRE stores its ECE_Cache data.
 
     if [[ $? -ne 0 ]]; then
         echo "  ERROR: Failed to create ${output_file}"
@@ -122,6 +131,9 @@ create_podtemplate_sc() {
 }
 
 # Function to create pod template with existing PVC
+#
+# Only SASWORK is modified here because only 1 PVC name is provided. The "tmp" volume is left unchanged.
+# ------------------------
 create_podtemplate_pvc() {
     local source_template="$1"
     local new_template="$2"
@@ -146,6 +158,9 @@ create_podtemplate_pvc() {
     jq 'del(.metadata.uid, .metadata.resourceVersion, .metadata.creationTimestamp, .metadata.generation, .metadata.managedFields)' | \
     jq --arg pvc "${pvc_name}" '(.template.spec.volumes[] | select(.name == "viya")) |= {name: "viya", persistentVolumeClaim: {claimName: $pvc}}' \
     > "${output_file}"
+
+    # Note: the "viya" volume is where SPRE stores SASWORK data  <======= Only changing this because we have just 1 PVC to work with.
+    #       the "tmp" volume is where the SPRE stores its ECE_Cache data.
 
     if [[ $? -ne 0 ]]; then
         echo "  ERROR: Failed to create ${output_file}"
@@ -268,10 +283,11 @@ EOF
 #==============================================================================
 
 main() {
+    local VIYA_HOME=${VIYA_NS:-"$MY_VIYA_HOME"}
     local VIYA_NS=${VIYA_NS:-"$MY_NS"}
 
     local PT_VOLUME_SIZE=${PT_VOLUME_SIZE:-"200Gi"}
-    local VIYA_URL=$(yq '.configMapGenerator[].literals[] | select(contains("SAS_SERVICES_URL"))' $HOME/project/deploy/$VIYA_NS/kustomization.yaml | cut -d= -f2)
+    local VIYA_URL=$(yq '.configMapGenerator[].literals[] | select(contains("SAS_SERVICES_URL"))' $VIYA_HOME/kustomization.yaml | cut -d= -f2)
 
     # Check if namespace exists
     if ! kubectl get namespace "${VIYA_NS}" &>/dev/null; then
@@ -313,7 +329,7 @@ main() {
     local CONTEXT_NAME="$4"
 
     # Configuration
-    WORK_DIR="${HOME}/project/deploy/${VIYA_NS}/saswork-providers"
+    WORK_DIR="$VIYA_HOME/saswork-providers"
     mkdir -p "${WORK_DIR}"
     echo "Working Directory: ${WORK_DIR}"
     echo "Namespace: ${VIYA_NS}"

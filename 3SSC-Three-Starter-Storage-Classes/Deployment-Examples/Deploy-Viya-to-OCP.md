@@ -11,51 +11,51 @@ Let's get this done. This page provides a streamlined deployment of SAS Viya to 
 
 Here's the plan:
 
-- [Deploy SAS Viya to OpenShift Container Platform with 3 Starter Storage Classes](#deploy-sas-viya-to-openshift-container-platform-with-3-starter-storage-classes)
-    - [Basis](#basis)
-    - [Reserve a RACE collection](#reserve-a-race-collection)
-    - [Logon to RACE host(s)](#logon-to-race-hosts)
-    - [▶ PMP: Clone Project Mountpoint](#-pmp-clone-project-mountpoint)
-    - [Get Viya resources and assets](#get-viya-resources-and-assets)
-        - [Download Viya order assets](#download-viya-order-assets)
-        - [▶ PMP: Configure the Viya assets](#-pmp-configure-the-viya-assets)
-        - [▷ Status Check](#-status-check)
-    - [Infrastructure](#infrastructure)
-        - [Setup the Kubernetes clients](#setup-the-kubernetes-clients)
-        - [Label for Compute workloads](#label-for-compute-workloads)
-        - [Install Cert Utils Operator](#install-cert-utils-operator)
-        - [Initialize the OpenShift project for SAS Viya](#initialize-the-openshift-project-for-sas-viya)
-    - [Additional site configuration](#additional-site-configuration)
-        - [Configure Viya's resources for OpenShift](#configure-viyas-resources-for-openshift)
-        - [Confirm files match configuration](#confirm-files-match-configuration)
-        - [▷ Status Check](#-status-check-1)
-    - [▶ PMP: Provision and configure storage in OCP](#-pmp-provision-and-configure-storage-in-ocp)
-        - [OCP provides storage classes out-of-the-box](#ocp-provides-storage-classes-out-of-the-box)
-        - [RWO storage for `viya-standard-sc`: Azure managed disk](#rwo-storage-for-viya-standard-sc-azure-managed-disk)
-        - [Local storage for `viya-scratch-sc`: LVM Storage Operator](#local-storage-for-viya-scratch-sc-lvm-storage-operator)
-        - [RWX storage for `viya-shared-sc`: Azure Files](#rwx-storage-for-viya-shared-sc-azure-files)
-        - [▷ Status Check](#-status-check-2)
-    - [Provision and configure supporting 3rd-party resources](#provision-and-configure-supporting-3rd-party-resources)
-        - [Create a sitedefault file for user authentication with gel-adds](#create-a-sitedefault-file-for-user-authentication-with-gel-adds)
-        - [Install OpenSSL as the certificate generator](#install-openssl-as-the-certificate-generator)
-        - [Configure Viya for "routes" instead of "ingresses"](#configure-viya-for-routes-instead-of-ingresses)
-    - [Deploy the SAS Viya platform](#deploy-the-sas-viya-platform)
-        - [Install the Orchestration tool](#install-the-orchestration-tool)
-        - [Deploy SAS Viya](#deploy-sas-viya)
-        - [▷ Status Check](#-status-check-3)
-    - [Validate the SAS Viya platform](#validate-the-sas-viya-platform)
-        - [Review storage resources in Viya's namespace](#review-storage-resources-in-viyas-namespace)
-        - [Logon to SAS Viya](#logon-to-sas-viya)
-        - [As directed](#as-directed)
-        - [▷ Status Check](#-status-check-4)
-    - [Delete your environment](#delete-your-environment)
-        - [Uninstall Viya from OpenShift Container Platform](#uninstall-viya-from-openshift-container-platform)
-        - [Destroy cloud resources](#destroy-cloud-resources)
-        - [▷ Status Check](#-status-check-5)
+- [Basis](#basis)
+- [Reserve a RACE collection](#reserve-a-race-collection)
+- [Logon to RACE host(s)](#logon-to-race-hosts)
+- [▶ PMP: Clone Project Mountpoint](#-pmp-clone-project-mountpoint)
+- [Get Viya resources and assets](#get-viya-resources-and-assets)
+    - [Download Viya order assets](#download-viya-order-assets)
+    - [▶ PMP: Configure the Viya assets](#-pmp-configure-the-viya-assets)
+    - [▷ Status Check](#-status-check)
+- [Infrastructure](#infrastructure)
+    - [Setup the Kubernetes clients](#setup-the-kubernetes-clients)
+    - [Label for Compute workloads](#label-for-compute-workloads)
+    - [Install Cert Utils Operator](#install-cert-utils-operator)
+    - [Initialize the OpenShift project for SAS Viya](#initialize-the-openshift-project-for-sas-viya)
+- [Additional site configuration](#additional-site-configuration)
+    - [Configure Viya's resources for OpenShift](#configure-viyas-resources-for-openshift)
+    - [Confirm files match configuration](#confirm-files-match-configuration)
+    - [▷ Status Check](#-status-check-1)
+- [▶ PMP: Provision and configure storage in OCP](#-pmp-provision-and-configure-storage-in-ocp)
+    - [OCP provides storage classes out-of-the-box](#ocp-provides-storage-classes-out-of-the-box)
+    - [RWO storage for `viya-standard-sc`: Azure managed disk](#rwo-storage-for-viya-standard-sc-azure-managed-disk)
+    - [Local storage for `viya-scratch-sc`: LVM Storage Operator](#local-storage-for-viya-scratch-sc-lvm-storage-operator)
+    - [RWX storage for `viya-shared-sc`: Azure Files](#rwx-storage-for-viya-shared-sc-azure-files)
+    - [▷ Status Check](#-status-check-2)
+- [Provision and configure supporting 3rd-party resources](#provision-and-configure-supporting-3rd-party-resources)
+    - [Create a sitedefault file for user authentication with gel-adds](#create-a-sitedefault-file-for-user-authentication-with-gel-adds)
+    - [Install OpenSSL as the certificate generator](#install-openssl-as-the-certificate-generator)
+    - [Configure Viya for "routes" instead of "ingresses"](#configure-viya-for-routes-instead-of-ingresses)
+- [Deploy the SAS Viya platform](#deploy-the-sas-viya-platform)
+    - [\> Errors that are safe to ignore](#-errors-that-are-safe-to-ignore)
+    - [▷ Status Check](#-status-check-3)
+- [Validate the SAS Viya platform](#validate-the-sas-viya-platform)
+    - [Review storage resources in Viya's namespace](#review-storage-resources-in-viyas-namespace)
+    - [Logon to SAS Viya](#logon-to-sas-viya)
+    - [As directed](#as-directed)
+    - [▷ Status Check](#-status-check-4)
+- [Delete your environment](#delete-your-environment)
+    - [Uninstall Viya from OpenShift Container Platform](#uninstall-viya-from-openshift-container-platform)
+    - [Destroy cloud resources](#destroy-cloud-resources)
+    - [▷ Status Check](#-status-check-5)
 
 ## Basis
 
 The deployment process here is heavily borrowed from the [SAS® Viya®: Deployment on Google Kubernetes Engine](https://learn.sas.com/course/view.php?id=7115) (learn.sas.com) workshop.
+
+> Currently optimized for SAS Viya at LTS-2026.03 running on Kubernetes 1.32.x - 1.35.x. These align with Red Hat OCP or OKE 4.19.x – 4.21.x.
 
 
 
@@ -115,7 +115,7 @@ Let's get SAS Viya order assets and configure them.
     ```bash
     # Desired version of SAS Viya
     export MY_CADENCE_NAME='lts'
-    export MY_CADENCE_VERSION='2025.09'
+    export MY_CADENCE_VERSION='2026.03'
 
     # Remember it
     add_my_var MY_CADENCE_NAME
@@ -157,7 +157,7 @@ Let's get SAS Viya order assets and configure them.
     Recalled current workshop state:
     ---
     MY_CADENCE_NAME=lts
-    MY_CADENCE_VERSION=2025.09
+    MY_CADENCE_VERSION=2026.03
     MY_NS=viya
     MY_ORDERNUM=9D1ZB7
     MY_PREFIX=envoy-p41814
@@ -175,18 +175,15 @@ Now we need to create the required configuration files that will drive SAS Viya'
     ```bash
     # as cloud-user on your Linux host in RACE
 
-    # provide your Viya namespace
-    VIYA_NS="$MY_NS"
-
     # provide your Viya order directory
-    VIYA_ORDER_HOME="$HOME/project/deploy/${VIYA_NS}"
+    MY_VIYA_HOME="$HOME/project/deploy/${MY_NS}"
 
-    # provide your Viya expected FQDN
-    VIYA_FQDN="$MY_VIYA_FQDN"
+    # Remember it
+    add_my_var MY_VIYA_HOME
 
     # create the new kustomization.yaml
-    cat <<-EOF > $VIYA_ORDER_HOME/kustomization.yaml
-    namespace: ${VIYA_NS}
+    cat <<-EOF > $MY_VIYA_HOME/kustomization.yaml
+    namespace: ${MY_NS}
     resources:
       - sas-bases/base
       - sas-bases/overlays/network/networking.k8s.io
@@ -216,12 +213,15 @@ Now we need to create the required configuration files that will drive SAS Viya'
       - name: sas-shared-config
         behavior: merge
         literals:
-          - SAS_SERVICES_URL={{viya_fqdn}}
+          - SAS_SERVICES_URL=https://{{viya_fqdn}}
     EOF
     ```
 
     > Note: This is basically the [initial kustomization.yaml](https://documentation.sas.com/?cdcId=itopscdc&cdcVersion=default&docsetId=dplyml0phy0dkr&docsetTarget=n0g237aqo6pz1in1t19wjb94j9bi.htm) shown in SAS documentation, but improved slightly:
     > - enables the "`sas-workload-orchestrator`" resources to add clusterrole and -binding
+    >
+    >   for Viya 2025.12 and later, append "`/cluster-role`"
+    >
     > - specifies the fully-qualified domain name for ingress host and the SAS services url
     >
     > Additional configuration to kustomization.yaml is provided later as those related elements are deployed.
@@ -230,10 +230,10 @@ Now we need to create the required configuration files that will drive SAS Viya'
 
     ```bash
     # Subdirectory for storage config
-    mkdir -p ${VIYA_ORDER_HOME}/site-config/storage
+    mkdir -p ${MY_VIYA_HOME}/site-config/storage
 
     # Copy the 3SSC configuration to your site-config
-    cp $PMP_HOME/3SSC-Three-Starter-Storage-Classes/3SSC-transformers.yaml ${VIYA_ORDER_HOME}/site-config/storage
+    cp $PMP_HOME/3SSC-Three-Starter-Storage-Classes/3SSC-transformers.yaml ${MY_VIYA_HOME}/site-config/storage
     ```
 
 1. Update kustomization.yaml to reference the new patch file(s):
@@ -241,7 +241,7 @@ Now we need to create the required configuration files that will drive SAS Viya'
     ```bash
     # Insert new storage configuration to kustomization.yaml
     
-    cd ${VIYA_ORDER_HOME}
+    cd ${MY_VIYA_HOME}
 
     # backup to be safe
     cp -p kustomization.yaml "kustomization.yaml.bak-$(date +%y%m%d%H%M)"
@@ -250,11 +250,11 @@ Now we need to create the required configuration files that will drive SAS Viya'
     index=$(yq eval '.transformers | to_entries | .[] | select(.value == "sas-bases/overlays/required/transformers.yaml") | .key' kustomization.yaml);
 
     # Add refererence to 3SSC in site-config to kustomization.yaml
-    if [[ -f "${VIYA_ORDER_HOME}/site-config/storage/3SSC-transformers.yaml" ]]; then
+    if [[ -f "${MY_VIYA_HOME}/site-config/storage/3SSC-transformers.yaml" ]]; then
         # Insert the reference to 3SSC
         yq eval -i ".transformers |= (.[0:${index}] + [\"site-config/storage/3SSC-transformers.yaml\"] + .[${index}:])" kustomization.yaml
     else
-        echo "Error: 3SSC-transformers.yaml is not in \"${VIYA_ORDER_HOME}/site-config/storage\" directory." >&2
+        echo "Error: 3SSC-transformers.yaml is not in \"${MY_VIYA_HOME}/site-config/storage\" directory." >&2
         exit 1
     fi
 
@@ -309,6 +309,7 @@ The oc command-line interface gives us a powerful utility to administer resource
     "platform": "linux/amd64"
     }
     ```
+    
 
 1.  Get your administrator credentials
 
@@ -561,14 +562,47 @@ The cert-utils-operator manages the TLS certficates needed for encrypted communi
         ./sas-bases/examples/configure-elasticsearch/internal/openshift/sas-opendistro-scc.yaml > ./site-config/sas-opendistro-scc.yaml
     ```
 
-1.  Apply all the required SCC definition files provided by SAS
+1. Set up SCC for CAS using host accounts, or not.
+
+    First, answer the question:
+
+    ```bash
+    # Prompt
+    read -p "Should CAS use host accounts (y/N)? " response
+    ```
+
+    > Note: We recommend answering "No" to this prompt unless you're already familiar with the considerations of CAS using host accounts.
+
+    Then we do what you want:
+
+    ```bash
+    # Act on the response
+    if [[ "${response,,}" == "y" || "${response,,}" == "yes" ]]; then
+        echo "==> CAS will use host accounts"
+
+        # apply CAS host account SCC
+        oc apply -f ./sas-bases/examples/cas/configure/cas-server-scc-host-launch.yaml
+
+        # bind to svc acct
+        oc -n $MY_NS adm policy add-scc-to-user sas-cas-server-host -z sas-cas-server
+
+    else
+        echo "==> CAS will not use host accounts (default)"
+        
+        # apply normal CAS shared account SCC
+        oc apply -f ./sas-bases/examples/cas/configure/cas-server-scc.yaml
+
+        # bind to svc acct
+        oc -n $MY_NS adm policy add-scc-to-user sas-cas-server -z sas-cas-server
+    fi
+    ```
+
+1.  Apply all the remaining SCC definition files required by SAS
 
     ```bash
     # verify we are logged in as the cluster administrator, Ahmed
     oc whoami
 
-    # CAS: pick only one of cas-server-scc.yaml or cas-server-scc-host-launch.yaml
-    oc apply -f ./sas-bases/examples/cas/configure/cas-server-scc.yaml
     # SAS Watchdog - includes SPRE, too
     oc apply -f ./sas-bases/examples/sas-programming-environment/watchdog/sas-watchdog-scc.yaml
     # MAS
@@ -578,7 +612,7 @@ The cert-utils-operator manages the TLS certficates needed for encrypted communi
     # Model Repository Service
     oc apply -f ./sas-bases/overlays/sas-model-repository/service-account/sas-model-repository-scc.yaml
     # SAS Decisions Runtime Builder Service Buildkit
-    oc apply -f ./sas-bases/overlays/sas-decisions-runtime-builder/buildkit/service-account/buildkit-scc.yaml
+    #oc apply -f ./sas-bases/overlays/sas-decisions-runtime-builder/buildkit/service-account/buildkit-scc.yaml
     # OpenSearch
     oc apply -f ./site-config/sas-opendistro-scc.yaml
     # SAS Configurator for Open Source
@@ -591,7 +625,6 @@ The cert-utils-operator manages the TLS certficates needed for encrypted communi
 
     ```bash
     # Add service accounts for Viya SCC
-    oc -n $MY_NS adm policy add-scc-to-user sas-cas-server -z sas-cas-server
     oc -n $MY_NS adm policy add-scc-to-user sas-opendistro -z sas-opendistro
     oc -n $MY_NS adm policy add-scc-to-user sas-microanalytic-score -z sas-microanalytic-score
     oc -n $MY_NS adm policy add-scc-to-user sas-model-repository -z sas-model-repository
@@ -614,8 +647,11 @@ The cert-utils-operator manages the TLS certficates needed for encrypted communi
     ```
 
     > Reminder:
-    > - 3SSC = 3 Starter Storage Classes
-    > - SCC = Security Context Constraint
+    > -   SCC = Security Context Constraint
+    >
+    >     *not be be confused with*
+    >
+    > -   3SSC = 3 Starter Storage Classes
     >
     > Note that "3SSC" patches CAS to use a Generic Ephemeral Volume (GeV) for CAS_DISK_CACHE and patches the SPRE containers to use GeV for SASWORK and ECE_Cache. The SCC definition files (cas-server-scc and sas-watchdog-scc) provided by SAS don't include the permission for ephemeral volumes. So, we add those on the fly in the example here. Alternatively, you could modify those files first like we did for sas-opendistro-scc above.
     >
@@ -1219,141 +1255,108 @@ OpenShift uses *routes* for its ingress controllers to expose services within th
 
 ## Deploy the SAS Viya platform
 
-We'll use the SAS Orchestration Utility to deploy the SAS Viya platform to EKS.
+We'll use the manual commands to deploy SAS Viya.
 
-### Install the Orchestration tool
-
-The official instructions are available in the README; see section "[Using Kubernetes Tools from the sas-orchestration Image](https://support.sas.com/documentation/installcenter/viya/SASViyaReadMe.htm#using_kubernetes_tools_from_the_sas-orchestration_image)".
-
--   Retrieve the `sas-orchestration` image from the SAS Registry (cr.sas.com).
+1.  Use Kustomize to build the site manifest
 
     ```bash
-    # Parse the sas-orchestration image version from the DepOp README
-    IMAGE_VERSION=$(cat ~/project/deploy/${MY_NS}/sas-bases/examples/kubernetes-tools/README.md | grep "docker tag cr.sas.com/viya-4-x64_oci_linux_2-docker/sas-orchestration:" | sed 's/^.*sas-orchestration:/sas-orchestration:/' | cut -d " " -f 1 | cut -d ":"  -f 2)
-    echo "image version:" $IMAGE_VERSION
+    cd $MY_VIYA_HOME
 
-    # Pull the sas-orchestration image from cr.sas.com
-    docker pull cr.sas.com/viya-4-x64_oci_linux_2-docker/sas-orchestration:${IMAGE_VERSION}
+    # Build the site manifest to describe Viya resources to Kubernetes
+    kustomize build -o site.yaml
     ```
 
--   Replace the image tag for ease of use.
+    > Kustomize will look at the `kustomization.yaml` we created as well as the files it references in `sas-bases/` and `site-config/` to put everything together. The results will be output to the manifest file `site.yaml`.
 
-    Replace '`cr.sas.com/viya-4-x64_oci_linux_2-docker/sas-orchestration:x.xx.x-yyymmdd.xxxxxxxxxxxxx`' with a local tag for ease of use. Then we can refer to the container simply as '`sas-orchestration`'.
+    It takes a minute or so to run.
+
+1.  Apply the resources defined in `site.yaml` to the cluster in a deliberately scoped fashion for best results:
+
+    Apply **Cluster API** resources first:
 
     ```bash
-    # Rename to something easy
-    docker tag cr.sas.com/viya-4-x64_oci_linux_2-docker/sas-orchestration:${IMAGE_VERSION} sas-orchestration
+    cd $MY_VIYA_HOME
 
-    # Validate: looks for "sas-orchestration" in the list of containers
-    docker image list | grep sas-orchestration
+    # Apply Cluster API resources
+    oc apply --selector="sas.com/admin=cluster-api" --server-side --force-conflicts -f site.yaml
 
-    # Confirm we can use the container as its named
-    docker run --rm sas-orchestration deploy --help
+    # Wait for Custom Resource Deployment to be deployed
+    oc wait --for condition=established --timeout=60s -l "sas.com/admin=cluster-api" crd
     ```
 
--   You are now all set to start using the `sas-orchestration` tool to deploy SAS Viya.
-
-### Deploy SAS Viya
-
-1.  Run the `sas-orchestration` utility to deploy SAS Viya
-
-    ```bash
-    cd ~/project/deploy
-
-    # Confirm namespace for Viya exists
-    if ! kubectl get namespace "$MY_NS" >/dev/null 2>&1; then
-
-        echo -e "\n>>> ERROR: Namespace '$MY_NS' does not exist.\n           Refer to \"Initialize the OpenShift project\" instructions to set it up.\n"
-
-    else
-
-        # Run the sas-orchestration with all deployment parameters
-        docker run --rm \
-        -v $(pwd):/workingdir/ \
-        -v ~/.kube/config:/kube/config \
-        -e "KUBECONFIG=/kube/config" \
-        --user $(id -u):$(id -g) \
-        sas-orchestration \
-        deploy \
-        --namespace ${MY_NS} \
-        --deployment-data /workingdir/${MY_NS}/SASViyaV4_${MY_ORDERNUM}_certs.zip \
-        --license /workingdir/${MY_NS}/SASViyaV4_${MY_ORDERNUM}_license.jwt \
-        --user-content /workingdir/${MY_NS} \
-        --cadence-name ${MY_CADENCE_NAME} \
-        --cadence-version ${MY_CADENCE_VERSION}
-
-    fi
-    ```
-
-    ---
-
-    <details>
-    <summary>Click Here for alternative command that enables Debug output</summary>
-
-    ```sh
-    # Include directives to show Debug output
-    docker run --rm \
-    -v $(pwd):/workingdir/ \
-    -v ~/.kube/config:/kube/config \
-    -e "KUBECONFIG=/kube/config" \
-    -e DEBUG_LOG_LOCATION=stderr \
-    --user $(id -u):$(id -g) \
-    sas-orch --verbose \
-    deploy \
-    --namespace ${MY_NS} \
-    --deployment-data /workingdir/${MY_NS}/SASViyaV4_${MY_ORDERNUM}_certs.zip \
-    --license /workingdir/${MY_NS}/SASViyaV4_${MY_ORDERNUM}_license.jwt \
-    --user-content /workingdir/${MY_NS} \
-    --cadence-name ${MY_CADENCE_NAME} \
-    --cadence-version ${MY_CADENCE_VERSION}
-    ```
-
-    </details>
-
-    ---
-
-    With results similar to:
+    Creates custom resource definitions, showing they're established with:
 
     ```log
-    The deploy command started
-    Generating deployment artifacts
-    Generating deployment artifacts complete
-    Generating kustomizations
-    Generating kustomizations complete
-    Generating manifests
-    Generating manifests complete
-    Applying manifests
-    > start_leading gel-viya
-
-    I0110 17:39:48.672683       1 leaderelection.go:248] attempting to acquire leader lease gel-viya/sas-lifecycle-leader...
-    I0110 17:39:48.752099       1 leaderelection.go:258] successfully acquired lease gel-viya/sas-lifecycle-leader
-    > kubectl delete --namespace gel-viya --wait --timeout 7200s --ignore-not-found configmap sas-deploy-lifecycle-operation-variables
-
-    > kubectl create --namespace gel-viya configmap sas-deploy-lifecycle-operation-variables
-
-    configmap/sas-deploy-lifecycle-operation-variables created
-
-    > run deploy-assess --namespace gel-viya --deploymentDir /work/deploy/resources/generation --timeout 7200s --serviceAccountName  --manifest /work/deploy/manifest.yaml
-    ...
-    ...
+    customresourcedefinition.apiextensions.k8s.io/casdeployments.viya.sas.com condition met
+    customresourcedefinition.apiextensions.k8s.io/crunchybridgeclusters.postgres-operator.crunchydata.com condition met
+    customresourcedefinition.apiextensions.k8s.io/dataservers.webinfdsvr.sas.com condition met
+    customresourcedefinition.apiextensions.k8s.io/espconfigs.iot.sas.com condition met
+    customresourcedefinition.apiextensions.k8s.io/esploadbalancers.iot.sas.com condition met
+    customresourcedefinition.apiextensions.k8s.io/espservers.iot.sas.com condition met
+    customresourcedefinition.apiextensions.k8s.io/opendistroclusters.opendistro.sas.com condition met
+    customresourcedefinition.apiextensions.k8s.io/pgadmins.postgres-operator.crunchydata.com condition met
+    customresourcedefinition.apiextensions.k8s.io/pgupgrades.postgres-operator.crunchydata.com condition met
+    customresourcedefinition.apiextensions.k8s.io/postgresclusters.postgres-operator.crunchydata.com condition met
     ```
 
-    Ending with:
+    > Note that if you see errors to "ensure CRDs are installed first", then simply re-run this block of commands.
 
-    ```log
-    ...
-    ...
-    Applying manifests complete
-    The deploy command completed successfully
+1.  Apply **Cluster Wide** resources:
+
+    ```bash
+    cd $MY_VIYA_HOME
+
+    # Apply Cluster Wide resources
+    oc apply --selector="sas.com/admin=cluster-wide" -f site.yaml
     ```
 
-    > If nothing happens after the "`deploy command started`" message or if you see a failure/error message, then simply try re-running the `deploy` again. Often that's all it needs. Beyond that, try the Debug option (above) and resolve.
+    Defines a few dozen resources for service accounts with roles and rolebindings. These are accessible and visible across the entire cluster, existing outside of any specific namespace.
+
+1.  Apply **Cluster Local** resources:
+
+    ```bash
+    cd $MY_VIYA_HOME
+
+    # Apply Cluster Local resources
+    oc apply --selector="sas.com/admin=cluster-local" -f site.yaml --prune
+    ```
+
+    Deploys dozens more resources labeled as cluster-local. The `--prune` parameter deletes any existing resources with that label not currently in the `site.yaml` file.
+
+    This batch includes more rolebindings as well as configmaps, secrets, PVC, and podtemplates. Similar to cluster-wide, this scope ensures they remain within the physical boundaries of the cluster, not exposed outside.
+
+1.  Apply **Namespace** resources:
+
+    ```bash
+    cd $MY_VIYA_HOME
+
+    # Apply Namespace resources
+    oc apply --selector="sas.com/admin=namespace" -f site.yaml --prune
+    ```
+
+    Deploys hundreds of resources including configmaps, services, deployments, statefulsets, cronjobs, jobs, ingresses, podtemplates, and more. All of these are visible in the `viya` namespace of the Kubernetes cluster.
+
+### > Errors that are safe to ignore
+
+Some errors are easily resolved by simply running the failed `oc apply` command again.
+
+During the deployment using the `oc apply` commands, you might see expected error messages, including:
+
+```text
+error: error pruning nonNamespaced object
+
+Deprecated: kubectl apply will no longer prune non-namespaced resources by default when used with the --namespace flag in a future release.
+
+Warning: path <API-path-for-URLs> cannot be used with pathType Prefix
+
+Warning: v1 Endpoints is deprecated in v1.33+; use discovery.k8s.io/v1 EndpointSlice
+```
+
+As the *SAS&reg; Viya&reg; Platform Operations* document > <a href="https://documentation.sas.com/?cdcId=itopscdc&cdcVersion=default&docsetId=dplyml0phy0dkr&docsetTarget=p127f6y30iimr6n17x2xe9vlt54q.htm#p0n0x0jvog312an1wggpgnam1jsw">Deployment Using Kubernetes Commands</a> explains, "they can safely be ignored."
 
 ### &#9655; Status Check
 
-You've kicked off the deployment SAS Viya software to the Google Cloud infrastructure using the SAS Orchestration utility.
-
-After the SAS Orchestration utility says it's "completed successfully", Kubernetes will continue the work as directed by the site manifest to retrieve containers and startup Viya services. It will take another 10-20 minutes for Viya to achieve readiness.
+You've kicked off the deployment SAS Viya software to the Red Hat OpenShift (running in MS Azure infrastructure). It will take another 10-20 minutes for Viya to achieve readiness.
 
 ## Validate the SAS Viya platform
 

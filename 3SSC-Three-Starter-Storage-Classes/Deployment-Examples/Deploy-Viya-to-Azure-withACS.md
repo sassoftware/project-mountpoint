@@ -13,55 +13,56 @@ Let's get this done. This page provides a streamlined deployment of SAS Viya to 
 
 Here's the plan:
 
-- [Deploy SAS Viya to Azure with 3 Starter Storage Classes](#deploy-sas-viya-to-azure-with-3-starter-storage-classes)
-    - [Basis](#basis)
-    - [Reserve a RACE collection](#reserve-a-race-collection)
-    - [Logon to RACE host(s)](#logon-to-race-hosts)
-    - [▶ PMP: Clone Project Mountpoint](#-pmp-clone-project-mountpoint)
-    - [Initialize the workshop environment](#initialize-the-workshop-environment)
-    - [Get Viya resources and assets](#get-viya-resources-and-assets)
-        - [Download the order assets for SAS Viya](#download-the-order-assets-for-sas-viya)
-        - [▶ PMP: Configure the Viya assets](#-pmp-configure-the-viya-assets)
-        - [▷ Status Check](#-status-check)
-    - [Infrastructure](#infrastructure)
-        - [Setup SSH key](#setup-ssh-key)
-        - [Set up Terraform](#set-up-terraform)
-        - [Obtain the Terraform templates](#obtain-the-terraform-templates)
-        - [Set-up the Terraform and initialize the configuration](#set-up-the-terraform-and-initialize-the-configuration)
-        - [Configure Terraform for desired Azure resources](#configure-terraform-for-desired-azure-resources)
-        - [Use Terraform to provision infrastructure](#use-terraform-to-provision-infrastructure)
-        - [Get k8s clients set up](#get-k8s-clients-set-up)
-        - [▷ Status Check](#-status-check-1)
-    - [▶ PMP: Provision and configure storage in Azure](#-pmp-provision-and-configure-storage-in-azure)
-        - [Azure provides storage classes out-of-the-box](#azure-provides-storage-classes-out-of-the-box)
-        - [RWO storage for `viya-standard-sc`: Azure managed disk](#rwo-storage-for-viya-standard-sc-azure-managed-disk)
-        - [Local storage for `viya-scratch-sc`: Azure Container Storage v2 (for NVMe)](#local-storage-for-viya-scratch-sc-azure-container-storage-v2-for-nvme)
-        - [RWX storage for `viya-shared-sc`: NFS Server](#rwx-storage-for-viya-shared-sc-nfs-server)
-        - [▷ Status Check](#-status-check-2)
-    - [Provision and configure supporting 3rd-party resources](#provision-and-configure-supporting-3rd-party-resources)
-        - [Deploy GEL's demo LDAP service](#deploy-gels-demo-ldap-service)
-        - [Install OpenSSL as the certificate generator](#install-openssl-as-the-certificate-generator)
-        - [Confirm files match configuration](#confirm-files-match-configuration)
-        - [Install ingress-nginx](#install-ingress-nginx)
-        - [Establish a user-friendly DNS alias](#establish-a-user-friendly-dns-alias)
-        - [▷ Status Check](#-status-check-3)
-    - [Deploy the SAS Viya platform](#deploy-the-sas-viya-platform)
-        - [Install the Orchestration tool](#install-the-orchestration-tool)
-        - [Deploy SAS Viya](#deploy-sas-viya)
-        - [▷ Status Check](#-status-check-4)
-    - [Validate the SAS Viya platform](#validate-the-sas-viya-platform)
-        - [Review storage resources in Viya's namespace](#review-storage-resources-in-viyas-namespace)
-        - [Logon to SAS Viya](#logon-to-sas-viya)
-        - [As directed](#as-directed)
-        - [▷ Status Check](#-status-check-5)
-    - [Delete your environment](#delete-your-environment)
-        - [Uninstall Viya from Azure](#uninstall-viya-from-azure)
-        - [Destroy cloud resources](#destroy-cloud-resources)
-        - [▷ Status Check](#-status-check-6)
+- [Basis](#basis)
+- [Reserve a RACE collection](#reserve-a-race-collection)
+- [Logon to RACE host(s)](#logon-to-race-hosts)
+- [▶ PMP: Clone Project Mountpoint](#-pmp-clone-project-mountpoint)
+- [Initialize the workshop environment](#initialize-the-workshop-environment)
+- [Get Viya resources and assets](#get-viya-resources-and-assets)
+    - [Download the order assets for SAS Viya](#download-the-order-assets-for-sas-viya)
+    - [▶ PMP: Configure the Viya assets](#-pmp-configure-the-viya-assets)
+    - [▷ Status Check](#-status-check)
+- [Infrastructure](#infrastructure)
+    - [Setup SSH key](#setup-ssh-key)
+    - [Set up Terraform](#set-up-terraform)
+    - [Obtain the Terraform templates](#obtain-the-terraform-templates)
+    - [Set-up the Terraform and initialize the configuration](#set-up-the-terraform-and-initialize-the-configuration)
+    - [Configure Terraform for desired Azure resources](#configure-terraform-for-desired-azure-resources)
+    - [Use Terraform to provision infrastructure](#use-terraform-to-provision-infrastructure)
+    - [Get k8s clients set up](#get-k8s-clients-set-up)
+    - [▷ Status Check](#-status-check-1)
+- [▶ PMP: Provision and configure storage in Azure](#-pmp-provision-and-configure-storage-in-azure)
+    - [Azure provides storage classes out-of-the-box](#azure-provides-storage-classes-out-of-the-box)
+    - [RWO storage for `viya-standard-sc`: Azure managed disk](#rwo-storage-for-viya-standard-sc-azure-managed-disk)
+    - [Local storage for `viya-scratch-sc`: Azure Container Storage v2 (for NVMe)](#local-storage-for-viya-scratch-sc-azure-container-storage-v2-for-nvme)
+    - [RWX storage for `viya-shared-sc`: NFS Server](#rwx-storage-for-viya-shared-sc-nfs-server)
+    - [▷ Status Check](#-status-check-2)
+- [Provision and configure supporting 3rd-party resources](#provision-and-configure-supporting-3rd-party-resources)
+    - [Deploy GEL's demo LDAP service](#deploy-gels-demo-ldap-service)
+    - [Install OpenSSL as the certificate generator](#install-openssl-as-the-certificate-generator)
+    - [Confirm files match configuration](#confirm-files-match-configuration)
+    - [Install ingress-nginx](#install-ingress-nginx)
+    - [Establish a user-friendly DNS alias](#establish-a-user-friendly-dns-alias)
+    - [▷ Status Check](#-status-check-3)
+- [Deploy the SAS Viya platform](#deploy-the-sas-viya-platform)
+    - [Install the Orchestration tool](#install-the-orchestration-tool)
+    - [Deploy SAS Viya](#deploy-sas-viya)
+    - [▷ Status Check](#-status-check-4)
+- [Validate the SAS Viya platform](#validate-the-sas-viya-platform)
+    - [Review storage resources in Viya's namespace](#review-storage-resources-in-viyas-namespace)
+    - [Logon to SAS Viya](#logon-to-sas-viya)
+    - [As directed](#as-directed)
+    - [▷ Status Check](#-status-check-5)
+- [Delete your environment](#delete-your-environment)
+    - [Uninstall Viya from Azure](#uninstall-viya-from-azure)
+    - [Destroy cloud resources](#destroy-cloud-resources)
+    - [▷ Status Check](#-status-check-6)
 
 ## Basis
 
 The deployment process here is heavily borrowed from the [SAS® Viya®: Deployment on Azure Kubernetes Service](https://learn.sas.com/course/view.php?id=6419) (learn.sas.com) workshop.
+
+> Currently optimized for SAS Viya at LTS-2026.03 running on Kubernetes 1.32.x - 1.35.x.
 
 
 
@@ -127,7 +128,7 @@ Let's get SAS Viya order assets and configure them.
     ```bash
     # Desired version of SAS Viya
     export MY_CADENCE_NAME='lts'
-    export MY_CADENCE_VERSION='2025.09'
+    export MY_CADENCE_VERSION='2026.03'
 
     # Remember it
     #add_my_var MY_CADENCE_NAME
@@ -212,6 +213,9 @@ Now we need to create the required configuration files that will drive SAS Viya'
 
     > Note: This is basically the [initial kustomization.yaml](https://documentation.sas.com/?cdcId=itopscdc&cdcVersion=default&docsetId=dplyml0phy0dkr&docsetTarget=n0g237aqo6pz1in1t19wjb94j9bi.htm) shown in SAS documentation, but improved slightly:
     > - enables the "`sas-workload-orchestrator`" resources to add clusterrole and -binding
+    >
+    >   for Viya 2025.12 and later, append "`/cluster-role`"
+    >
     > - specifies the fully-qualified domain name for ingress host and the SAS services url
     >
     > Additional configuration to kustomization.yaml is provided later as those related elements are deployed. The placeholder for the Viya's ingress FQDN will be modified later, too.
@@ -681,9 +685,9 @@ With the terraform variables all defined, now we can provision the infrastructur
     With results similar to:
 
     ```log
-    Client Version: v1.32.9
-    Kustomize Version: v5.5.0
-    Server Version: v1.32.9
+    Client Version: v1.33.12
+    Kustomize Version: v5.6.0
+    Server Version: v1.33.12
     ```
 
     > Note: The Client version and Server version numbers should match now.

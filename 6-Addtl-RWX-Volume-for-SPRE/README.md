@@ -8,6 +8,8 @@ Out of the box, the SPRE pods - that is, SAS Batch, SAS Compute, and SAS Connect
 
 - **Database Drivers**: There's no need to install database drivers to every container that needs them in Viya. Instead we can place the drivers we need into one shared volume and mount it as needed.
 
+- **User home directories**: Provide space on a shared volume with subdirectories dedicated for each user's private files.
+
 This exercise will set up datamart and gridwork volumes for the SPRE pods.
 
 ## Configure SPRE for more volumes
@@ -88,9 +90,9 @@ libname gridwork "/data/gridwork";
 /* File reference */
 filename myinput "/data/datamart/input_file.csv";
 
-/* Import CSV using fileref */
+/* Import CSV using fileref - save out to gridwork */
 proc import datafile="myinput"
-            out=work.myoutput 
+            out=gridwork.myoutput 
             dbms=csv 
             replace;
 run;

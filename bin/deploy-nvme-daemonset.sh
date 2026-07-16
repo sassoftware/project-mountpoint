@@ -59,26 +59,42 @@ cat << 'EOF' >> ./nvme-mounter-daemonset.yaml
 
           echo "Starting NVMe setup for SAS Viya ephemeral storage..."
 
-          # Auto-detect NVMe device: find the first NVMe disk that's not already mounted
-          # and is not the root device
+          # If the mount point is already active this is a re-run on a node that was
+          # previously set up. Identify the device and skip straight to the downstream
+          # checks (which are all idempotent) and into the monitoring loop.
           DEVICE=""
-          for nvme_dev in $(ls -1 /host/dev/nvme*n1 2>/dev/null | sort); do
-              dev_name=$(basename "$nvme_dev")
-              # Skip if it's already mounted
-              if ! $NSENTER mountpoint -q "/dev/$dev_name" 2>/dev/null; then
+          if $NSENTER mountpoint -q "${MOUNT_POINT}" 2>/dev/null; then
+              DEVICE=$($NSENTER findmnt -n -o SOURCE "${MOUNT_POINT}" 2>/dev/null)
+              echo "${MOUNT_POINT} already mounted on ${DEVICE} -- skipping format/mount steps"
+          else
+              # Fresh node: find the first NVMe disk whose full device tree has no mounts.
+              # Use lsblk rather than mountpoint -q on the disk device, because
+              # mountpoint -q /dev/nvmeXn1 does not detect partitioned root disks where
+              # mounts live on child partitions (e.g. nvme0n1p1 at /).
+              for nvme_dev in $(ls -1 /host/dev/nvme*n1 2>/dev/null | sort); do
+                  dev_name=$(basename "$nvme_dev")
+                  # Skip if device or any child partition has a mount point
+                  if $NSENTER lsblk -n -o MOUNTPOINT "/dev/$dev_name" 2>/dev/null | grep -qv '^[[:space:]]*$'; then
+                      continue
+                  fi
                   DEVICE="/dev/$dev_name"
                   break
+              done
+
+              if [ -z "$DEVICE" ]; then
+                  # Fallback: scan via lsblk in case /host/dev glob missed something
+                  for dev in $($NSENTER lsblk -d -n -l -o NAME,TYPE | awk '$2=="disk" && $1~/nvme/ {print "/dev/"$1}'); do
+                      if ! $NSENTER lsblk -n -o MOUNTPOINT "$dev" 2>/dev/null | grep -qv '^[[:space:]]*$'; then
+                          DEVICE="$dev"
+                          break
+                      fi
+                  done
               fi
-          done
 
-          if [ -z "$DEVICE" ]; then
-              # Fallback: try to detect from within container context
-              DEVICE=$($NSENTER lsblk -d -n -l -o NAME,TYPE | grep nvme | head -1 | awk '{print "/dev/"$1}')
-          fi
-
-          if [ -z "$DEVICE" ]; then
-              echo "ERROR: No available NVMe device found"
-              exit 1
+              if [ -z "$DEVICE" ]; then
+                  echo "ERROR: No available NVMe device found"
+                  exit 1
+              fi
           fi
 
           echo "Found NVMe device: ${DEVICE}"

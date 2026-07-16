@@ -11,54 +11,55 @@ Let's get this done. This page provides a streamlined deployment of SAS Viya to 
 
 Here's the plan:
 
-- [Deploy SAS Viya to Google Cloud with 3 Starter Storage Classes](#deploy-sas-viya-to-google-cloud-with-3-starter-storage-classes)
-    - [Basis](#basis)
-    - [Reserve a RACE collection](#reserve-a-race-collection)
-    - [Logon to RACE host(s)](#logon-to-race-hosts)
-    - [▶ PMP: Clone Project Mountpoint](#-pmp-clone-project-mountpoint)
-    - [Get Viya resources and assets](#get-viya-resources-and-assets)
-        - [Download Viya order assets](#download-viya-order-assets)
-        - [▶ PMP: Configure the Viya assets](#-pmp-configure-the-viya-assets)
-        - [▷ Status Check](#-status-check)
-    - [Infrastructure](#infrastructure)
-        - [Setup the gcloud CLI](#setup-the-gcloud-cli)
-        - [Identify yourself to Google Cloud](#identify-yourself-to-google-cloud)
-        - [Install and Configure Terraform](#install-and-configure-terraform)
-        - [Setup SSH key](#setup-ssh-key)
-        - [Which IAC-provisioned shared (RWX) storage?](#which-iac-provisioned-shared-rwx-storage)
-        - [Configure Terraform for desired Google Cloud resources](#configure-terraform-for-desired-google-cloud-resources)
-        - [Use Terraform to provision infrastructure](#use-terraform-to-provision-infrastructure)
-        - [Get k8s clients set up](#get-k8s-clients-set-up)
-        - [▷ Status Check](#-status-check-1)
-    - [▶ PMP: Provision and configure storage in Google Cloud](#-pmp-provision-and-configure-storage-in-google-cloud)
-        - [Google Cloud provides storage classes out-of-the-box](#google-cloud-provides-storage-classes-out-of-the-box)
-        - [RWO storage for `viya-standard-sc`: Google persistent disk](#rwo-storage-for-viya-standard-sc-google-persistent-disk)
-        - [Local storage for `viya-scratch-sc`: Rancher local-path](#local-storage-for-viya-scratch-sc-rancher-local-path)
-        - [RWX storage for `viya-shared-sc`: NFS to Google Filestore](#rwx-storage-for-viya-shared-sc-nfs-to-google-filestore)
-        - [▷ Status Check](#-status-check-2)
-    - [Provision and configure supporting 3rd-party resources](#provision-and-configure-supporting-3rd-party-resources)
-        - [Install OpenSSL as the certificate generator](#install-openssl-as-the-certificate-generator)
-        - [Deploy GEL's demo LDAP service](#deploy-gels-demo-ldap-service)
-        - [Confirm files match configuration](#confirm-files-match-configuration)
-        - [Install ingress-nginx](#install-ingress-nginx)
-        - [Establish a user-friendly DNS alias](#establish-a-user-friendly-dns-alias)
-    - [Deploy the SAS Viya platform](#deploy-the-sas-viya-platform)
-        - [Install the Orchestration tool](#install-the-orchestration-tool)
-        - [Deploy SAS Viya](#deploy-sas-viya)
-        - [▷ Status Check](#-status-check-3)
-    - [Validate the SAS Viya platform](#validate-the-sas-viya-platform)
-        - [Review storage resources in Viya's namespace](#review-storage-resources-in-viyas-namespace)
-        - [Logon to SAS Viya](#logon-to-sas-viya)
-        - [As directed](#as-directed)
-        - [▷ Status Check](#-status-check-4)
-    - [Delete your environment](#delete-your-environment)
-        - [Uninstall Viya from Google Kubernetes Engine](#uninstall-viya-from-google-kubernetes-engine)
-        - [Destroy cloud resources](#destroy-cloud-resources)
-        - [▷ Status Check](#-status-check-5)
+- [Basis](#basis)
+- [Reserve a RACE collection](#reserve-a-race-collection)
+- [Logon to RACE host(s)](#logon-to-race-hosts)
+- [▶ PMP: Clone Project Mountpoint](#-pmp-clone-project-mountpoint)
+- [Get Viya resources and assets](#get-viya-resources-and-assets)
+    - [Download Viya order assets](#download-viya-order-assets)
+    - [▶ PMP: Configure the Viya assets](#-pmp-configure-the-viya-assets)
+    - [▷ Status Check](#-status-check)
+- [Infrastructure](#infrastructure)
+    - [Setup the gcloud CLI](#setup-the-gcloud-cli)
+    - [Identify yourself to Google Cloud](#identify-yourself-to-google-cloud)
+    - [Install and Configure Terraform](#install-and-configure-terraform)
+    - [Setup SSH key](#setup-ssh-key)
+    - [Which IAC-provisioned shared (RWX) storage?](#which-iac-provisioned-shared-rwx-storage)
+    - [Configure Terraform for desired Google Cloud resources](#configure-terraform-for-desired-google-cloud-resources)
+    - [Use Terraform to provision infrastructure](#use-terraform-to-provision-infrastructure)
+    - [Get k8s clients set up](#get-k8s-clients-set-up)
+    - [▷ Status Check](#-status-check-1)
+- [▶ PMP: Provision and configure storage in Google Cloud](#-pmp-provision-and-configure-storage-in-google-cloud)
+    - [Google Cloud provides storage classes out-of-the-box](#google-cloud-provides-storage-classes-out-of-the-box)
+    - [RWO storage for `viya-standard-sc`: Google persistent disk](#rwo-storage-for-viya-standard-sc-google-persistent-disk)
+    - [Local storage for `viya-scratch-sc`: Rancher local-path](#local-storage-for-viya-scratch-sc-rancher-local-path)
+    - [RWX storage for `viya-shared-sc`: NFS to Google Filestore](#rwx-storage-for-viya-shared-sc-nfs-to-google-filestore)
+    - [▷ Status Check](#-status-check-2)
+- [Provision and configure supporting 3rd-party resources](#provision-and-configure-supporting-3rd-party-resources)
+    - [Install OpenSSL as the certificate generator](#install-openssl-as-the-certificate-generator)
+    - [Deploy GEL's demo LDAP service](#deploy-gels-demo-ldap-service)
+    - [Confirm files match configuration](#confirm-files-match-configuration)
+    - [Install ingress-nginx](#install-ingress-nginx)
+    - [Establish a user-friendly DNS alias](#establish-a-user-friendly-dns-alias)
+- [Deploy the SAS Viya platform](#deploy-the-sas-viya-platform)
+    - [Install the Orchestration tool](#install-the-orchestration-tool)
+    - [Deploy SAS Viya](#deploy-sas-viya)
+    - [▷ Status Check](#-status-check-3)
+- [Validate the SAS Viya platform](#validate-the-sas-viya-platform)
+    - [Review storage resources in Viya's namespace](#review-storage-resources-in-viyas-namespace)
+    - [Logon to SAS Viya](#logon-to-sas-viya)
+    - [As directed](#as-directed)
+    - [▷ Status Check](#-status-check-4)
+- [Delete your environment](#delete-your-environment)
+    - [Uninstall Viya from Google Kubernetes Engine](#uninstall-viya-from-google-kubernetes-engine)
+    - [Destroy cloud resources](#destroy-cloud-resources)
+    - [▷ Status Check](#-status-check-5)
 
 ## Basis
 
 The deployment process here is heavily borrowed from the [SAS® Viya®: Deployment on Google Kubernetes Engine](https://learn.sas.com/course/view.php?id=7115) (learn.sas.com) workshop.
+
+> Currently optimized for SAS Viya at LTS-2026.03 running on Kubernetes 1.32.x - 1.35.x.
 
 
 
@@ -122,7 +123,7 @@ Let's get SAS Viya order assets and configure them.
     ```bash
     # Desired version of SAS Viya
     export MY_CADENCE_NAME='lts'
-    export MY_CADENCE_VERSION='2025.09'
+    export MY_CADENCE_VERSION='2026.03'
 
     # Remember it
     add_my_var MY_CADENCE_NAME
@@ -164,7 +165,7 @@ Let's get SAS Viya order assets and configure them.
     Recalled current workshop state:
     ---
     MY_CADENCE_NAME=lts
-    MY_CADENCE_VERSION=2025.09
+    MY_CADENCE_VERSION=2026.03
     MY_NS=viya
     MY_ORDERNUM=9D1ZB7
     MY_PREFIX=envoy-p41814
@@ -230,6 +231,9 @@ Now we need to create the required configuration files that will drive SAS Viya'
 
     > Note: This is basically the [initial kustomization.yaml](https://documentation.sas.com/?cdcId=itopscdc&cdcVersion=default&docsetId=dplyml0phy0dkr&docsetTarget=n0g237aqo6pz1in1t19wjb94j9bi.htm) shown in SAS documentation, but improved slightly:
     > - enables the "`sas-workload-orchestrator`" resources to add clusterrole and -binding
+    >
+    >   for Viya 2025.12 and later, append "`/cluster-role`"
+    >
     > - specifies the fully-qualified domain name for ingress host and the SAS services url
     >
     > Additional configuration to kustomization.yaml is provided later as those related elements are deployed.
@@ -343,13 +347,15 @@ Let's configure the gcloud CLI to know who you are.
 
 First, let's check your credentials in a web browser:
 
-1.  In a web browser, visit the Google Console using the SAS federated logon: <https://console.cloud.google.com/>. **Provide your own site credentials** (if prompted).
+1.  Browse to the **Google Console** site:
 
     > Note: Each site is responsible to provide their own Google subscription credentials for a real implementation.
 
+    
+
     If that worked okay, then let's get signed in with the gcloud CLI...
 
-1.  Initial gcloud and sign in
+1.  Initialize gcloud and sign in
 
     ```sh
     ## Initialize gcloud
@@ -424,8 +430,9 @@ Install and configure terraform using the assets from viya4-iac-gcp project.
     cd ~/project/gcp/viya4-iac-gcp/
 
     # Instead of being at the mercy of the latest changes, we pin to a specific version
-    # v7.6.2 fix for "ubuntu-os-cloud/ubuntu-2004-lts"
-    IAC_GCP_TAG=v7.6.2
+    # IAC_GCP_TAG=v7.11.0
+    # temporary fix for filestore
+    IAC_GCP_TAG=pr-pscloud-1053
     git checkout tags/${IAC_GCP_TAG}
     ```
 
@@ -496,7 +503,7 @@ The viya4-iac-gcp project offers [three main options for shared (RWX) storage](h
 
     ```sh
     RWX_STORAGE_PROVIDER=$(cat << 'EOF'
-    storage_type                            = "ha"
+    storage_type                            = "standard"
     storage_type_backend                    = "filestore"
     EOF
     )
@@ -520,7 +527,7 @@ The IAC is driven by a terraform variables file that we must create. As shown he
 1.  Create the TF Vars file to drive infrastructure:
 
     ```bash
-    K8S_VERSION="1.31"
+    K8S_VERSION="1.33"
     SA_KEY_FILE="$HOME/.gel-sas-installer.json"
 
     # Start the Terraform variables file for the IAC
@@ -752,9 +759,9 @@ It will take 8-10 minutes for Terraform to complete the provisioning of resource
     With results similar to:
 
     ```log
-    Client Version: v1.31.14
-    Kustomize Version: v5.4.0
-    Server Version: v1.31.14-gke.1081000
+    Client Version: v1.33.13
+    Kustomize Version: v5.6.0
+    Server Version: v1.33.13-gke.1101000
     ```
 
     > Note: The Client version and Server version numbers should match now.
@@ -1058,7 +1065,8 @@ The IAC for Google Cloud provides two options of RWX storage that it can provide
     reclaimPolicy: Retain
     volumeBindingMode: WaitForFirstConsumer
     mountOptions:
-    #    - vers=4.1
+        - vers=3         # Basic tier Filestore is NFSv3 only
+        - nolock         # GKE COS has no rpc.statd for locking
         - noatime
         - nodiratime
         - 'rsize=262144'
@@ -1099,6 +1107,8 @@ The IAC for Google Cloud provides two options of RWX storage that it can provide
     volumeBindingMode: WaitForFirstConsumer
     ```
 
+<!--
+
 1.  Edit the file to make any desired changes. In this case, we need to tell Google Cloud to create Filestore instances in our VPC (not the Default VPC):
 
     ```bash
@@ -1106,7 +1116,11 @@ The IAC for Google Cloud provides two options of RWX storage that it can provide
     yq eval ".parameters.network = \"${MY_PREFIX}-vpc\"" -i defineSC_viya-shared-sc.yaml
     ```
 
-1.  When it's acceptable, then apply it:
+    > This option only applies as a Google Filestore CSI driver parameter. Do not use it with NFS.
+
+-->
+
+6.  When it's acceptable, then apply it:
 
     ```bash
     # Apply the storage class definition
