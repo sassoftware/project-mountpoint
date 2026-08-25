@@ -283,7 +283,7 @@ EOF
 #==============================================================================
 
 main() {
-    local VIYA_HOME=${VIYA_NS:-"$MY_VIYA_HOME"}
+    local VIYA_HOME=${VIYA_HOME:-"$HOME/project/deploy/$MY_NS"}
     local VIYA_NS=${VIYA_NS:-"$MY_NS"}
 
     local PT_VOLUME_SIZE=${PT_VOLUME_SIZE:-"200Gi"}

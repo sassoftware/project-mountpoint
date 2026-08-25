@@ -48,8 +48,12 @@ Here's the plan:
     - [Install the Orchestration tool](#install-the-orchestration-tool)
     - [Deploy SAS Viya](#deploy-sas-viya)
     - [▷ Status Check](#-status-check-4)
+- [Monitor the start up of SAS Viya services](#monitor-the-start-up-of-sas-viya-services)
+    - [K9s](#k9s)
+    - [Monitor sas-readiness pod](#monitor-sas-readiness-pod)
 - [Validate the SAS Viya platform](#validate-the-sas-viya-platform)
-    - [Review storage resources in Viya's namespace](#review-storage-resources-in-viyas-namespace)
+    - [Get a high-level storage report](#get-a-high-level-storage-report)
+    - [Check on specific storage resources in Viya's namespace](#check-on-specific-storage-resources-in-viyas-namespace)
     - [Logon to SAS Viya](#logon-to-sas-viya)
     - [As directed](#as-directed)
     - [▷ Status Check](#-status-check-5)
@@ -519,6 +523,9 @@ With the terraform variables all defined, now we can provision the infrastructur
 1.  Quick verification of Azure resources
 
     ```bash
+    # symlink for expected filename (hardcoded)
+    ln -s $myPrefix.tfplan my-aks.plan
+
     # Basic health check
     bash $HOME/workshop_scripts/utils/GEL.Infrastructure.HealthCheck.sh track-a
     ```
@@ -685,9 +692,9 @@ With the terraform variables all defined, now we can provision the infrastructur
     With results similar to:
 
     ```log
-    Client Version: v1.33.12
-    Kustomize Version: v5.6.0
-    Server Version: v1.33.12
+    Client Version: v1.34.9
+    Kustomize Version: v5.7.1
+    Server Version: v1.34.9
     ```
 
     > Note: The Client version and Server version numbers should match now.
@@ -1434,11 +1441,99 @@ You've kicked off the deployment SAS Viya software to the Azure infrastructure u
 
 After the SAS Orchestration utility says it's "completed successfully", Kubernetes will continue the work as directed by the site manifest to retrieve containers and startup Viya services. It will take another 10-20 minutes for Viya to achieve readiness.
 
+## Monitor the start up of SAS Viya services
+
+There are many tools to monitor the activity of the SAS Viya platform and how it progresses through the startup process. 
+
+### K9s
+
+If you've used the commerical [Lens](https://lenshq.io/products/lens-k8s-ide) app or open-source spinoffs [OpenLens](https://github.com/MuhammedKalkan/OpenLens) (now defunct) or [FreeLens](https://freelensapp.github.io), then you're already familiar with the kind of utility that [K9s](https://k9scli.io) provides. However, where Lens provides a point-and-click interface driven by your mouse pointer, K9s is instead driven by your keyboard. With a little practice, it provides easy access to powerful insights about the status of your Kubernetes cluster.
+
+-   Open up the K9s app installed earlier
+
+    ```bash
+    # launch K9s
+    k9s
+    ```
+
+-   Type `:ns` to bring up a list of namespaces
+
+-   Use the arrow keys to select the "viya" namespace and hit `[Enter]`. This shows a list of pods in the "viya" namespace
+
+-   Type `[Ctrl]-A` to sort the list of pods by Age (newest to oldest). You can watch as pods progress through their lifecycles. New pods will be added to the top.
+
+-   Type `:pods` to return to the list of pods. Re-sort again if needed.
+
+-   For more detail on a selected item, hit the `[Enter]` key. Depending on what you're looking at, you will see the "Describe" output or, if it's a hierarchical item, then K9s will take you down to the next level. For example, namespaces > pods > containers > logs.
+
+-   To reverse back, hit the `[Escape]` key. For example, if you're viewing a container's log > containers > pods > namespace.
+
+    Or use another colon-command (starting  with "`:`") to jump elsewhere.
+
+-   For help on key actions, refer to the reference list at the top of the screen, or hit "`?`" for the help screen (and `[Escape]` to exit it)
+
+-   Type `:q` to quit K9s and return to the Linux command line
+
+### Monitor sas-readiness pod
+
+The `sas-readiness` pod keeps track of the pods as they come online and mark themselves as Ready. When nearly all of them have reached that state, then the `sas-readiness` pod will mark itself as Ready, too. So, that's a pretty good indicator to monitor:
+
+```bash
+# Watch the "Ready" state of the sas-readiness pod
+kubectl -n $MY_NS get pod -l app.kubernetes.io/name=sas-readiness --watch
+```
+
+When the READY column shows `1/1`, then it's "ready":
+
+```log
+NAME                             READY   STATUS     RESTARTS  AGE
+sas-readiness-5b75b79f57-txkzx   0/1     Pending    0         0s
+sas-readiness-5b75b79f57-txkzx   0/1     Init:0/2   0         4s
+sas-readiness-5b75b79f57-txkzx   0/1     Init:1/2   0         10s
+sas-readiness-5b75b79f57-txkzx   0/1     Running    0         37s
+sas-readiness-5b75b79f57-txkzx   1/1     Running    0         20m
+```
+
+> Note how a new line is added for each change of state to the "sas-readiness" pod. Finally, the READY status is updated to "`1/1`" when SAS Viya's overall readiness is achieved (meaning most pods are Ready for work).
+
+Expect to wait 15-20 minutes to reach this milestone. Hit `[Ctrl]-C` to break out of the watch command.
+
+At steady state, fully started but with no user activity, expect to see around 120 pods or so running. (And note we did not enable high-availability features for the stateless services.)
+
 ## Validate the SAS Viya platform
 
 Before exploring storage use in the SAS Viya platform, let's perform some cursory checks to ensure that apps and services are functioning as expected.
 
-### Review storage resources in Viya's namespace
+### Get a high-level storage report
+
+This project includes the [K8s Volume Report utility](/9-Appendix/Kubernetes/k8s-volume-report.md) to for storage exploration.
+
+-   Create a high-level overview of volumes in the "viya" namespace
+
+    ```bash
+    # Get a namespace summary volume report
+    bash $PMP_HOME/bin/k8s-volume-report.sh -n viya
+    ```
+
+    With results similar to:
+
+    ```log
+    Fetching data from namespace 'viya'...
+
+    Volume Summary — namespace: viya  (110 pods)
+    ─────────────────────────────────────────────────────────────────────────────────────────────────────────
+    TYPE            COUNT  PODS W/TYPE  DETAILS
+    ─────────────────────────────────────────────────────────────────────────────────────────────────────────
+    emptyDir          304          109  4 w/ sizeLimit  |  3 w/ Memory medium
+    hostPath            0            0  (none)
+    PVC                31           18  18 unique claims  |  StorageClasses: viya-shared-sc, viya-standard-sc
+    GeV                 3            3  viya-scratch-sc: 50Gi×3
+    ─────────────────────────────────────────────────────────────────────────────────────────────────────────
+    ```
+
+-   Refer to the [K8s Volume Report utility](/9-Appendix/Kubernetes/k8s-volume-report.md) page for additional reporting options.
+
+### Check on specific storage resources in Viya's namespace
 
 1.  Launch `k9s`
 1.  Enter `:ns` and select the `viya` namespace
