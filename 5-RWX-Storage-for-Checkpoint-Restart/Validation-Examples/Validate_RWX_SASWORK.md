@@ -38,123 +38,130 @@ Preemption and the host "disappearing" are the **only** triggers for the "-resta
 
 To validate Checkpoint-Restart, we need 1) a job with checkpoint labels, 2) for that job to be preempted, and 3) for that job to be restarted such that it resumes where it left off.
 
-1.  The SAS program we'll use for testing:
+1.  The SAS programs we'll use for testing:
 
     ```bash
-    cat << EOF > ~/checkpoint-test.sas
-    /* Checkpoint-Restart Demo Program */
-    /* This program demonstrates checkpoint-restart capability in SAS Viya WLM */
+    # Job 1: SAS program with checkpoint labels
+    cat << EOF > $HOME/checkpoint-main.sas
+    /* --------------------------------------------------- 
+       Demo: Checkpoint-Restart Program 
 
-    /* Step 1: Create a test table from SASHELP data */
-    %put NOTE: Starting Step 1 - Creating test table;
-    %put NOTE: Current time: %sysfunc(datetime(), datetime20.);
+       This program demonstrates checkpoint-restart 
+       capability in SAS Viya WLM
+       --------------------------------------------------- */
 
-    label_begin:
-    data work.test_table;
-        set sashelp.cars;
-        random_id = ranuni(12345);
-    run;
+    step1_init_tables:
 
-    %put NOTE: Step 1 completed at %sysfunc(datetime(), datetime20.);
+        /* Step 1: Create a test table from SASHELP data */
+        %put NOTE: Starting Step 1 - Creating test table;
+        %put NOTE: Current time: %sysfunc(datetime(), datetime20.);
 
-    label_batchbaseball:
-    data work.baseball2;
-        set sashelp.baseball;
-    run;
+        /* sleeping 60s to allow time for interruption */
+        data _null_;
+            call sleep(60000);
+        run;
 
-    /* Create a checkpoint after table creation */
-    label_after_table_creation:
-    %put NOTE: Checkpoint created: after_table_creation;
+        data work.test_table;
+            set sashelp.cars;
+            random_id = ranuni(12345);
+        run;
 
-    /* Step 2: Sleep for 5 minutes to allow manual intervention */
-    %put NOTE: Starting Step 2 - Sleeping for 5 minutes;
-    %put NOTE: This is where you can delete the pod to test checkpoint-restart;
+        data work.baseball2;
+            set sashelp.baseball;
+        run;
 
-    label_30s:
-    data _null_;
-        start = datetime();
-        call sleep(30000);
-        finish = datetime();
-        put "NOTE: Sleep started at " start datetime20.;
-        put "NOTE: Sleep finished at " finish datetime20.;
-    run;
+        %put NOTE: Init_tables completed at %sysfunc(datetime(), datetime20.);
 
-    label_60s:
-    data _null_;
-        start = datetime();
-        call sleep(30000);
-        finish = datetime();
-        put "NOTE: Sleep started at " start datetime20.;
-        put "NOTE: Sleep finished at " finish datetime20.;
-    run;
+    step2_analysis:
 
-    label_90s:
-    data _null_;
-        start = datetime();
-        call sleep(30000);
-        finish = datetime();
-        put "NOTE: Sleep started at " start datetime20.;
-        put "NOTE: Sleep finished at " finish datetime20.;
-    run;
+        /* Step 3: Perform analysis on the table */
+        %put NOTE: Starting Step 3 - Performing analysis;
+        %put NOTE: Analysis started at %sysfunc(datetime(), datetime20.);
 
-    label_120s:
-    data _null_;
-        start = datetime();
-        call sleep(30000);
-        finish = datetime();
-        put "NOTE: Sleep started at " start datetime20.;
-        put "NOTE: Sleep finished at " finish datetime20.;
-    run;
+        /* sleeping 60s to allow time for interruption */
+        data _null_;
+            call sleep(60000);
+        run;
 
-    /* Create another checkpoint after sleep */
-    label_after_sleep:
-    %put NOTE: Checkpoint created: after_sleep;
+        /* PROC CONTENTS to show table structure */
+        proc contents data=work.test_table varnum;
+            title 'Contents of Test Table After Checkpoint-Restart';
+        run;
 
-    /* Step 3: Perform analysis on the table */
-    %put NOTE: Starting Step 3 - Performing analysis;
-    %put NOTE: Analysis started at %sysfunc(datetime(), datetime20.);
+        /* Some basic statistics */
+        proc means data=work.test_table n mean std min max;
+            var mpg_highway msrp;
+            title 'Statistics for Test Table';
+        run;
 
-    /* PROC CONTENTS to show table structure */
-    proc contents data=work.test_table varnum;
-        title 'Contents of Test Table After Checkpoint-Restart';
-    run;
+        /* Frequency analysis */
+        proc freq data=work.test_table;
+            tables mpg_highway * msrp / nocol norow nopercent;
+            title 'Cross-tabulation of MPG and Price Categories';
+        run;
 
-    /* Some basic statistics */
-    proc means data=work.test_table n mean std min max;
-        var mpg_highway msrp;
-        title 'Statistics for Test Table';
-    run;
+        %put NOTE: Analysis completed at %sysfunc(datetime(), datetime20.);
 
-    /* Frequency analysis */
-    proc freq data=work.test_table;
-        tables mpg_highway * msrp / nocol norow nopercent;
-        title 'Cross-tabulation of MPG and Price Categories';
-    run;
+    step3_cleanup:
 
-    %put NOTE: Analysis completed at %sysfunc(datetime(), datetime20.);
+        /* Step 4: Cleanup */
+        %put NOTE: Starting Step 4 - Cleanup;
 
-    /* Step 4: Cleanup */
-    %put NOTE: Starting Step 4 - Cleanup;
+        /* sleeping 60s to allow time for interruption */
+        data _null_;
+            call sleep(60000);
+        run;
 
-    proc delete data=work.test_table;
-    run;
+        proc delete data=work.test_table;
+        run;
 
-    %put NOTE: Cleanup completed at %sysfunc(datetime(), datetime20.);
-    %put NOTE: Checkpoint-Restart Demo Program completed successfully!;
+        %put NOTE: Cleanup completed at %sysfunc(datetime(), datetime20.);
+    EOF
+
+    # Job 2: use this program to interrupt the checkpoint program
+    cat << EOF > $HOME/checkpoint-interrupt.sas
+    /* --------------------------------------------------- 
+       Demo: Interrupting Program 
+
+       Use this program interrupt (preempt) the Checkpoint-
+       Restart Demo program mid-execution.
+
+       Preemption occurs when SAS Workload Orchestrator
+       stops execution of a SAS job to allow a higher-
+       priority job to run instead. After the high-priority
+       job completes, then SWO restarts the preempted job.
+       --------------------------------------------------- */
+
+    %put NOTE: This program is used to interrupt (preempt) the checkpoint-restart program to demonstrate the restart process.;
+
+    /* Not doing much here */
+    proc setinit; run;
     EOF
     ```
 
     > Notes:
     >
-    > This program is pretty simple. It creates a couple of tables in SASWORK, goes to sleep for a few minutes, and then does a few more things.
+    > The `checkpoint-main` program creates a couple of tables in SASWORK, performs some basic analysis, cleans up files, and adds some sleep steps in between to extend the runtime.
     >
     > Along the way, it creates checkpoint labels that will be used to determine where to restart the job if it fails midway through.
+    >
+    > The `checkpoint-interrupt` program is very simple. We just need it to interrupt (preempt) the `checkpoint-main` program's execution so we can see the Checkpoint-Restart functionality in action.
 
-1.  Submit the 1st test job:
+1.  Submit the 1st test job - "`checkpoint-main.sas`":
 
     ```bash
     # Use the sas-viya CLI to submit a batch program with checkpoint labels enabled
-    sas-viya batch jobs submit-pgm --context pmp-batch-saswork-pvc-bc --queue default --pgm ~/checkpoint-test.sas --restart-label --jobname jobrestart_default
+    sas-viya batch jobs submit-pgm --pgm ~/checkpoint-main.sas --restart-label --jobname checkpoint-main --context pmp-batch-saswork-pvc-bc --queue default
+    ```
+
+    ```bash
+    # Use the sas-viya CLI to submit a batch program with checkpoint labels enabled
+    sas-viya batch jobs submit-pgm --pgm ~/checkpoint-main.sas --restart-label --jobname main_job --context default --queue default
+    ```
+
+    ```bash
+    # Use the sas-viya CLI to submit a batch program with checkpoint labels enabled
+    sas-viya batch jobs submit-pgm --pgm ~/checkpoint-interrupt.sas --jobname interrupt_job --context default --queue highpriority
     ```
 
     > Note that we're referring to Batch Context "`pmp-batch-saswork-pvc-bc`" which we setup to reference a static PVC to RWX shared storage. If you prefer a different Batch Context, then specify it.
@@ -163,7 +170,7 @@ To validate Checkpoint-Restart, we need 1) a job with checkpoint labels, 2) for 
 
     ```log
     >>> The file set "JOB_20250905_213303_323_1" was created.
-    >>>   Uploading "checkpoint-test.sas".
+    >>>   Uploading "checkpoint-main.sas".
     >>> The job was submitted. ID: "1d4a22da-4a3c-4a22-b9a8-2aae483083be"  Workload Orchestrator job ID: "22"
     ```
 
@@ -180,7 +187,7 @@ To validate Checkpoint-Restart, we need 1) a job with checkpoint labels, 2) for 
 
     It's also a good idea to have K9s running in another terminal window, too.
 
-1.  Repeat the process above to **submit a 2nd test job to the higher-priority queue** (note the `--queue` parameter) to cause preemption of the first job in the middle of its run.
+1.  Repeat the process above to **submit "`checkpoint-interrupt.sas`" job to the higher-priority queue** (note the `--queue` parameter) to cause preemption of the first job in the middle of its run.
 
     > The SAS Workload Orchestrator will determine that the second job in the higher-priority queue should _preempt_ the first job. So, it kills the first job and reverts its status from "RUNNING" to "PENDING".
 

@@ -1,5 +1,10 @@
 # Deploy SAS Viya to AWS with 3 Starter Storage Classes
 
+> Note this exercise relies on OpenEBS to provide Viya storage:
+> - replicated RWO block storage from three Mayastor local-NVMe pools
+> - RWX NFS storage backed by a replicated Mayastor RWO PVC
+> - ephemeral local LVM volumes for Generic Ephemeral Volumes
+
 Let's get this done. This page provides a streamlined deployment of SAS Viya to AWS. We focus on a "happy path" approach that highlights the concept of 3 Starter Storage Classes as outlined in Project Mountpoint.
 
 > Note: This exercise takes an "upside-down" approach to deployment compared to other GEL deployment workshops. We will:
@@ -23,7 +28,7 @@ Here's the plan:
     - [Set up the AWS CLI](#set-up-the-aws-cli)
     - [Identify yourself to AWS](#identify-yourself-to-aws)
     - [Get the SAS Viya 4 Infrastructure-as-Code project](#get-the-sas-viya-4-infrastructure-as-code-project)
-    - [Patch viya4-iac-aws for Amazon FSx, if needed](#patch-viya4-iac-aws-for-amazon-fsx-if-needed)
+    - [Prepare OpenEBS node bootstrap scripts](#prepare-openebs-node-bootstrap-scripts)
     - [Build the viya4-iac-aws container](#build-the-viya4-iac-aws-container)
     - [Simplify commands](#simplify-commands)
     - [Setup SSH key](#setup-ssh-key)
@@ -35,9 +40,10 @@ Here's the plan:
     - [▷ Status Check](#-status-check-1)
 - [▶ PMP: Provision and configure storage in AWS](#-pmp-provision-and-configure-storage-in-aws)
     - [AWS provides a storage class out-of-the-box](#aws-provides-a-storage-class-out-of-the-box)
-    - [RWO storage for `viya-standard-sc`: Amazon EBS](#rwo-storage-for-viya-standard-sc-amazon-ebs)
-    - [Local storage for `viya-scratch-sc`: Rancher local-path](#local-storage-for-viya-scratch-sc-rancher-local-path)
-    - [RWX storage for `viya-shared-sc`: NFS Server](#rwx-storage-for-viya-shared-sc-nfs-server)
+    - [OpenEBS storage for all 3SSC classes](#openebs-storage-for-all-3ssc-classes)
+    - [Reference only: Amazon EBS RWO storage](#reference-only-amazon-ebs-rwo-storage)
+    - [Reference only: Rancher local-path scratch storage](#reference-only-rancher-local-path-scratch-storage)
+    - [Reference only: external NFS Server RWX storage](#reference-only-external-nfs-server-rwx-storage)
     - [▷ Status Check](#-status-check-2)
 - [Provision and configure supporting 3rd-party resources](#provision-and-configure-supporting-3rd-party-resources)
     - [Deploy GEL's demo LDAP service](#deploy-gels-demo-ldap-service)
@@ -277,6 +283,7 @@ Now we need to create the required configuration files that will drive SAS Viya'
         yq eval -i ".transformers |= (.[0:${index}] + [\"site-config/storage/3SSC-transformers.yaml\"] + .[${index}:])" kustomization.yaml
     else
         echo "Error: 3SSC-transformers.yaml is not in \"${VIYA_ORDER_HOME}/site-config/storage\" directory." >&2
+        exit 1
     fi
 
     # Verify the update
@@ -468,13 +475,55 @@ cd ~/viya4-iac-aws
 #git checkout 8.8.0
 ```
 
-### Patch viya4-iac-aws for Amazon FSx, if needed
+### Prepare OpenEBS node bootstrap scripts
 
-> **This is an optional step** - but it is ***required*** if you intend to use the IAC to provision Amazon FSx for NetApp ONTAP resources.
+Create the node bootstrap scripts **after cloning** `viya4-iac-aws` and before the initial Terraform plan. The scripts are bind-mounted into the Terraform container at `/workspace`; rebuilding the container after creating them is not required.
 
-&star; Perform the tasks to [Patch IAC FSx module for IAM Policy](https://your-git-repo.example.com/GEL/workshops/Your_Project_Name-sas-viya-4-deployment-on-amazon-elastic-kubernetes-service/-/blob/main/07-Experimental/07-100-Storage_Patterns/07-110-Provision_Infrastructure/12-Get-viya4-iac-aws.md).
+```bash
+# Mayastor storage nodes: reserve HugePages and enable NVMe-over-TCP.
+cat <<'EOF' > ~/viya4-iac-aws/files/custom-data/mayastor-node-bootstrap.sh
+#!/usr/bin/env bash
+dnf install -y nfs-utils
+cat >/etc/modules-load.d/openebs-mayastor.conf <<'MODULES'
+nvme-tcp
+MODULES
+modprobe nvme-tcp
+cat >/etc/sysctl.d/90-openebs-mayastor.conf <<'SYSCTL'
+vm.nr_hugepages = 1024
+SYSCTL
+sysctl --system
+EOF
 
-Then return here and continue.
+# CAS and Compute nodes: reserve their local NVMe disk for Local PV LVM.
+cat <<'EOF' > ~/viya4-iac-aws/files/custom-data/openebs-lvm-node-bootstrap.sh
+#!/usr/bin/env bash
+set -o pipefail
+dnf install -y lvm2 nvme-cli nfs-utils
+modprobe dm_snapshot
+cat >/etc/modules-load.d/openebs-lvm.conf <<'MODULES'
+dm_snapshot
+MODULES
+LOCAL_NVME_DEVICE=$(nvme list | awk '/Amazon EC2 NVMe Instance Storage/ {print $1; exit}')
+if [[ -z "${LOCAL_NVME_DEVICE}" ]]; then
+  printf '%s\n' 'No Amazon EC2 NVMe Instance Storage device was found.' >&2
+  exit 1
+fi
+if ! vgs viya-scratch-vg >/dev/null 2>&1; then
+  pvcreate "${LOCAL_NVME_DEVICE}"
+  vgcreate viya-scratch-vg "${LOCAL_NVME_DEVICE}"
+fi
+EOF
+
+# All other workload pools need only the host NFS client for the NFS CSI node plugin.
+cat <<'EOF' > ~/viya4-iac-aws/files/custom-data/openebs-nfs-client-bootstrap.sh
+#!/usr/bin/env bash
+dnf install -y nfs-utils
+EOF
+
+chmod 0755 ~/viya4-iac-aws/files/custom-data/{mayastor-node-bootstrap.sh,openebs-lvm-node-bootstrap.sh,openebs-nfs-client-bootstrap.sh}
+```
+
+> The Mayastor script deliberately does not format the instance-store NVMe device. OpenEBS claims it later as a raw DiskPool. The LVM script creates `viya-scratch-vg` only on CAS and Compute nodes, whose local disk remains separate from Mayastor pool disks.
 
 ### Build the viya4-iac-aws container
 
@@ -570,52 +619,19 @@ ansible localhost -m openssh_keypair \
 
 The viya4-iac-aws project offers [three main options for shared (RWX) storage](https://github.com/sassoftware/viya4-iac-aws/blob/main/docs/CONFIG-VARS.md#storage).
 
-**Select one of the following** and execute the command given to set an environment variable with the appropriate IAC parameters:
+Execute the command given to set an environment variable with the appropriate IAC parameters:
 
--   Basic, no-frills NFS Server   **<<== PICK THIS ONE**
+-   OpenEBS in-cluster NFS Server
 
     ```sh
+    # OpenEBS provides the NFS server later; do not provision IAC shared storage.
     RWX_STORAGE_PROVIDER=$(cat << 'EOF'
-    # Basic NFS Server for RWX volumes
-    storage_type             = "standard"
-    create_nfs_public_ip     = false
-    nfs_vm_admin             = "nfsuser"
-    nfs_raid_disk_size       = 128
-    nfs_raid_disk_type       = "gp2"     # or io1/2, sc1, st2, standard
-    nfs_raid_disk_iops       = 0         # for io1/2 only
+    storage_type                            = "none"
     EOF
     )
     ```
 
-    > Note: I haven't added the necessary decisions/actions for the other storage to this exercise yet - but I have thoroughly tested them all. :)
-
--   Amazon Elastic File Storage (EFS)
-
-    ```sh
-    RWX_STORAGE_PROVIDER=$(cat << 'EOF'
-    # Amazon EFS for RWX volumes
-    storage_type                            = "ha"
-    efs_performance_mode                    = "generalPurpose"
-    EOF
-    )
-    ```
-
--   Amazon FSx for NetApp ONTAP (FSx)
-
-    ```sh
-    RWX_STORAGE_PROVIDER=$(cat << 'EOF'
-    # Amazon FSx for NetApp ONTAP for RWX volumes
-    storage_type                                   = "ha"
-    storage_type_backend                           = "ontap"
-    aws_fsx_ontap_deployment_type                  = "SINGLE_AZ_1"     # or MULTI_AZ_1
-    aws_fsx_ontap_file_system_storage_capacity     = "1024"            # up to 196608
-    aws_fsx_ontap_file_system_throughput_capacity  = "512"             # up to 4096
-    aws_fsx_ontap_fsxadmin_password                = "ThePowerToKnow123!"
-    EOF
-    )
-    ```
-
-    > Reminder to perform the tasks to [Patch IAC FSx module for IAM Policy](https://your-git-repo.example.com/GEL/workshops/Your_Project_Name-sas-viya-4-deployment-on-amazon-elastic-kubernetes-service/-/blob/main/07-Experimental/07-100-Storage_Patterns/07-110-Provision_Infrastructure/12-Get-viya4-iac-aws.md) (including rebuilding the IAC container) if using FSx storage.
+    > The OpenEBS storage section installs an NFS server backed by a replicated Mayastor PVC. Amazon EFS and FSx remain alternatives for a production RWX implementation.
 
 ### Configure Terraform for desired AWS resources
 
@@ -681,7 +697,7 @@ The IAC is driven by a terraform variables file that we must create. As shown he
 
     default_nodepool_node_count             = 2
     default_nodepool_vm_type                = "m7i-flex.2xlarge"
-    default_nodepool_custom_data            = ""
+    default_nodepool_custom_data            = "/workspace/files/custom-data/openebs-nfs-client-bootstrap.sh"
 
     ## Shared storage provider
     $RWX_STORAGE_PROVIDER
@@ -701,7 +717,7 @@ The IAC is driven by a terraform variables file that we must create. As shown he
             "workload.sas.com/class" = "cas"
             "attr.sas.com/local-nvme" = "true"
             }
-            "custom_data" = ""
+            "custom_data" = "/workspace/files/custom-data/openebs-lvm-node-bootstrap.sh"
             "metadata_http_endpoint"               = "enabled"
             "metadata_http_tokens"                 = "required"
             "metadata_http_put_response_hop_limit" = 1
@@ -720,7 +736,7 @@ The IAC is driven by a terraform variables file that we must create. As shown he
             "launcher.sas.com/prepullImage" = "sas-programming-environment"
             "attr.sas.com/local-nvme" = "true"
             }
-            "custom_data" = ""
+            "custom_data" = "/workspace/files/custom-data/openebs-lvm-node-bootstrap.sh"
             "metadata_http_endpoint"               = "enabled"
             "metadata_http_tokens"                 = "required"
             "metadata_http_put_response_hop_limit" = 1
@@ -737,7 +753,26 @@ The IAC is driven by a terraform variables file that we must create. As shown he
             "node_labels" = {
             "workload.sas.com/class" = "stateless"
             }
-            "custom_data" = ""
+            "custom_data" = "/workspace/files/custom-data/openebs-nfs-client-bootstrap.sh"
+            "metadata_http_endpoint"               = "enabled"
+            "metadata_http_tokens"                 = "required"
+            "metadata_http_put_response_hop_limit" = 1
+        },
+        # Fixed Mayastor storage pool for this playpen: 3 replicas require 3 nodes.
+        mayastor = {
+            "vm_type" = "r6idn.2xlarge"                    # 8 vCPU, 64 GiB, 474 GB local NVMe
+            "cpu_type"     = "AL2023_x86_64_STANDARD"
+            "os_disk_type" = "gp3"
+            "os_disk_size" = 200
+            "os_disk_iops" = 0
+            "min_nodes" = 3
+            "max_nodes" = 3
+            "node_taints" = []
+            "node_labels" = {
+            "openebs.io/engine" = "mayastor"
+            "workload.sas.com/class" = "mayastor"
+            }
+            "custom_data" = "/workspace/files/custom-data/mayastor-node-bootstrap.sh"
             "metadata_http_endpoint"               = "enabled"
             "metadata_http_tokens"                 = "required"
             "metadata_http_put_response_hop_limit" = 1
@@ -754,7 +789,7 @@ The IAC is driven by a terraform variables file that we must create. As shown he
             "node_labels" = {
             "workload.sas.com/class" = "stateful"
             }
-            "custom_data" = ""
+            "custom_data" = "/workspace/files/custom-data/openebs-nfs-client-bootstrap.sh"
             "metadata_http_endpoint"               = "enabled"
             "metadata_http_tokens"                 = "required"
             "metadata_http_put_response_hop_limit" = 1
@@ -765,19 +800,14 @@ The IAC is driven by a terraform variables file that we must create. As shown he
     create_jump_vm                        = true
     jump_vm_admin                         = "jumpuser"
     jump_vm_type                          = "t3.small"
-
-    # NFS Server
-    # only used when storage_type is "standard" to create NFS Server VM
-    create_nfs_public_ip                  = false
-    nfs_vm_admin                          = "nfsuser"
-    nfs_vm_type                           = "m7i-flex.xlarge"
     EOF
     ```
 
     > Note, this specifies:
     > - 200GB OS disk as `gp3` volumes
-    > - Your choice for `RWX_STORAGE_PROVIDER` has been included
-    > - Instance types with local disk are specified for CAS and Compute, including labels we can use to identify them.
+    > - `storage_type = "none"` prevents the IAC from creating an unused external NFS server
+    > - CAS and Compute local NVMe disks become the `viya-scratch-vg` LVM volume group
+    > - Three fixed `r6idn.2xlarge` nodes provide local-NVMe Mayastor DiskPools for this playpen.
 
 ### Use Terraform to provision infrastructure
 
@@ -979,7 +1009,7 @@ At the risk of repetition, the site is responsible for providing storage that me
 
 > Note: Project Mountpoint's contribution here is the idea of *copying* storage classes. By giving Viya its own set of storage class names, we abstract Viya's config from the physical implementation. This isn't required - the site is free to use any names for storage classes it wants - but the additional layer of abstraction gives us another aspect of control.
 
-The IAC will setup your choice of supported shared (RWX) storage provider. But we also need CSI drivers and other resources. Some of these would be handled automatically by the DAC project, but we're not using that here.
+The IAC deliberately creates no external RWX service in this OpenEBS playpen. The storage steps below install the in-cluster NFS server, CSI drivers, and other resources. Some of these would be handled automatically by the DAC project, but we're not using that here.
 
 1.  We will make copies of storage classes. To help aid that task:
 
@@ -1025,7 +1055,267 @@ AWS provides an RWO storage class for immediate use of Amazon Elastic Block Stor
     >
     > In the real world, if a site wants to have a "default"-annotated storage class, that's fine.
 
-### RWO storage for `viya-standard-sc`: Amazon EBS
+### OpenEBS storage for all 3SSC classes
+
+This is the active storage path for this exercise. It uses:
+
+- Replicated PV Mayastor for persistent RWO volumes (`viya-standard-sc`)
+- an in-cluster NFS server backed by a Mayastor PVC for persistent RWX volumes (`viya-shared-sc`)
+- OpenEBS Local PV LVM on CAS and Compute local NVMe for GeVs (`viya-scratch-sc`)
+
+> The IAC has already created three fixed `r6idn.2xlarge` nodes whose local NVMe disks are reserved for Mayastor. Those disks are **instance store**: they disappear when a node stops or is replaced. This is a playpen pattern only. Keep the three-node pool on-demand and fixed at three nodes.
+
+1. Establish names used throughout the OpenEBS installation:
+
+    ```bash
+    export OPENEBS_NAMESPACE="openebs"
+    export OPENEBS_RELEASE="openebs"
+    export OPENEBS_CHART_VERSION="4.5.1"
+    export MAYASTOR_SC="openebs-mayastor-3"
+    export LVM_SC="openebs-lvm"
+    export LVM_VG="viya-scratch-vg"
+    export NFS_NAMESPACE="openebs-nfs"
+    export NFS_SERVER_NAME="viya-nfs-server"
+    export NFS_SC="openebs-nfs"
+    export NFS_BACKEND_SIZE="100Gi"
+
+    add_my_var OPENEBS_NAMESPACE
+    add_my_var MAYASTOR_SC
+    add_my_var LVM_SC
+    add_my_var NFS_NAMESPACE
+    add_my_var NFS_SERVER_NAME
+    add_my_var NFS_SC
+    ```
+
+1. Install OpenEBS with Replicated PV Mayastor and Local PV LVM:
+
+    ```bash
+    helm repo add openebs https://openebs.github.io/openebs
+    helm repo update
+
+    helm upgrade --install "${OPENEBS_RELEASE}" openebs/openebs \
+      --namespace "${OPENEBS_NAMESPACE}" \
+      --create-namespace \
+      --version "${OPENEBS_CHART_VERSION}" \
+      --wait
+
+    kubectl get pods -n "${OPENEBS_NAMESPACE}"
+    ```
+
+1. Create one Mayastor DiskPool for each node labeled `openebs.io/engine=mayastor`.
+
+    Before creating a pool, identify the persistent `/dev/disk/by-id/` link for the local NVMe instance-store device on each Mayastor node. The referenced disk must be raw and unused; creating the pool destroys its contents.
+
+    ```bash
+    kubectl get nodes -l openebs.io/engine=mayastor
+
+    cat <<'EOF' > ~/project/deploy/defineOpenEBS_MayastorDiskPools.yaml
+    ---
+    apiVersion: openebs.io/v1beta3
+    kind: DiskPool
+    metadata:
+      name: mayastor-pool-1
+      namespace: openebs
+    spec:
+      node: ip-192-168-0-72.ec2.internal
+      disks:
+        - aio:///dev/disk/by-id/REPLACE_WITH_FIRST_INSTANCE_STORE_DISK
+    ---
+    apiVersion: openebs.io/v1beta3
+    kind: DiskPool
+    metadata:
+      name: mayastor-pool-2
+      namespace: openebs
+    spec:
+      node: ip-192-168-17-222.ec2.internal
+      disks:
+        - aio:///dev/disk/by-id/REPLACE_WITH_SECOND_INSTANCE_STORE_DISK
+    ---
+    apiVersion: openebs.io/v1beta3
+    kind: DiskPool
+    metadata:
+      name: mayastor-pool-3
+      namespace: openebs
+    spec:
+      node: ip-192-168-33-73.ec2.internal
+      disks:
+        - aio:///dev/disk/by-id/REPLACE_WITH_THIRD_INSTANCE_STORE_DISK
+    EOF
+
+    # Substitute all placeholders, review, and apply.
+    kubectl apply -f ~/project/deploy/defineOpenEBS_MayastorDiskPools.yaml
+    kubectl get diskpools -n "${OPENEBS_NAMESPACE}"
+    ```
+
+    All three pools must report `Online` before a three-replica class can provision storage.
+
+1. Define the Mayastor RWO and Local PV LVM provider classes:
+
+    ```bash
+    cat <<EOF > ~/project/deploy/defineOpenEBS_RWO_Local_StorageClasses.yaml
+    ---
+    apiVersion: storage.k8s.io/v1
+    kind: StorageClass
+    metadata:
+      name: ${MAYASTOR_SC}
+    provisioner: io.openebs.csi-mayastor
+    allowVolumeExpansion: true
+    reclaimPolicy: Delete
+    volumeBindingMode: Immediate
+    parameters:
+      repl: "3"
+      protocol: "nvmf"
+      thin: "true"
+      fsType: ext4
+    ---
+    apiVersion: storage.k8s.io/v1
+    kind: StorageClass
+    metadata:
+      name: ${LVM_SC}
+    provisioner: local.csi.openebs.io
+    allowVolumeExpansion: true
+    reclaimPolicy: Delete
+    volumeBindingMode: WaitForFirstConsumer
+    parameters:
+      storage: lvm
+      volgroup: ${LVM_VG}
+      fsType: xfs
+      scheduler: CapacityWeighted
+    EOF
+
+    kubectl apply -f ~/project/deploy/defineOpenEBS_RWO_Local_StorageClasses.yaml
+    ```
+
+1. Install the Kubernetes NFS CSI driver and disable recursive `fsGroup` permission changes:
+
+    ```bash
+    helm repo add csi-driver-nfs https://raw.githubusercontent.com/kubernetes-csi/csi-driver-nfs/master/charts
+    helm repo update
+
+    helm upgrade --install csi-driver-nfs csi-driver-nfs/csi-driver-nfs \
+      --namespace kube-system \
+      --version v4.11.0 \
+      --wait
+
+    kubectl patch csidriver nfs.csi.k8s.io \
+      -p '{"spec":{"fsGroupPolicy":"None"}}'
+    ```
+
+    > Recursive permission changes for the large `python-volume` can delay SAS Programming Runtime startup. Every IAC node pool installs `nfs-utils` so the NFS CSI node plugin can mount shared volumes.
+
+1. Create an NFS server backed by a replicated Mayastor PVC:
+
+    ```bash
+    kubectl create namespace "${NFS_NAMESPACE}" --dry-run=client -o yaml | kubectl apply -f -
+
+    cat <<EOF | kubectl apply -f -
+    ---
+    apiVersion: v1
+    kind: PersistentVolumeClaim
+    metadata:
+      name: ${NFS_SERVER_NAME}-data
+      namespace: ${NFS_NAMESPACE}
+    spec:
+      accessModes:
+        - ReadWriteOnce
+      storageClassName: ${MAYASTOR_SC}
+      resources:
+        requests:
+          storage: ${NFS_BACKEND_SIZE}
+    ---
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: ${NFS_SERVER_NAME}
+      namespace: ${NFS_NAMESPACE}
+    spec:
+      replicas: 1
+      selector:
+        matchLabels:
+          app.kubernetes.io/name: ${NFS_SERVER_NAME}
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: ${NFS_SERVER_NAME}
+        spec:
+          containers:
+            - name: nfs-server
+              image: itsthenetwork/nfs-server-alpine:12
+              env:
+                - name: SHARED_DIRECTORY
+                  value: /nfsshare
+              ports:
+                - name: nfs
+                  containerPort: 2049
+              securityContext:
+                privileged: true
+              volumeMounts:
+                - name: data
+                  mountPath: /nfsshare
+          volumes:
+            - name: data
+              persistentVolumeClaim:
+                claimName: ${NFS_SERVER_NAME}-data
+    ---
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: ${NFS_SERVER_NAME}
+      namespace: ${NFS_NAMESPACE}
+    spec:
+      selector:
+        app.kubernetes.io/name: ${NFS_SERVER_NAME}
+      ports:
+        - name: nfs
+          port: 2049
+          targetPort: nfs
+    EOF
+
+    kubectl rollout status deployment/"${NFS_SERVER_NAME}" -n "${NFS_NAMESPACE}"
+    ```
+
+    Mayastor replicates the NFS server's data but does not make this single NFS server pod highly available. Use a managed RWX service for a production implementation.
+
+1. Define the NFS-backed RWX provider class, then copy all provider classes to the 3SSC names:
+
+    ```bash
+    cat <<EOF > ~/project/deploy/defineOpenEBS_NFS_StorageClass.yaml
+    apiVersion: storage.k8s.io/v1
+    kind: StorageClass
+    metadata:
+      name: ${NFS_SC}
+    provisioner: nfs.csi.k8s.io
+    reclaimPolicy: Retain
+    volumeBindingMode: Immediate
+    parameters:
+      server: ${NFS_SERVER_NAME}.${NFS_NAMESPACE}.svc.cluster.local
+      share: /
+      subDir: \${pvc.metadata.namespace}-\${pvc.metadata.name}
+      mountPermissions: "0777"
+    mountOptions:
+      - nfsvers=4.1
+      - noatime
+      - nodiratime
+    EOF
+
+    kubectl apply -f ~/project/deploy/defineOpenEBS_NFS_StorageClass.yaml
+
+    source "$PMP_HOME/bin/copySC.sh"
+    cd ~/project/deploy/"${MY_NS}"
+    copysc "${MAYASTOR_SC}" viya-standard-sc
+    copysc "${NFS_SC}" viya-shared-sc
+    copysc "${LVM_SC}" viya-scratch-sc
+
+    kubectl apply -f defineSC_viya-standard-sc.yaml
+    kubectl apply -f defineSC_viya-shared-sc.yaml
+    kubectl apply -f defineSC_viya-scratch-sc.yaml
+    kubectl get storageclass
+    ```
+
+### Reference only: Amazon EBS RWO storage
+
+> Do not run this section in the OpenEBS happy path. It remains as a reference for an EBS CSI implementation.
+
 
 The "viya-standard-sc" storage class is intended for use by [services that need persistent RWO volumes](/3SSC-Three-Starter-Storage-Classes/). SAS Viya services like Crunchy Postgres, RabbitMQ, Redis, Consul, and OpenSearch all need persistent RWO volumes.
 
@@ -1213,7 +1503,7 @@ The "viya-standard-sc" storage class is intended for use by [services that need 
     kubectl apply -f defineSC_viya-standard-sc.yaml
     ```
 
-### Local storage for `viya-scratch-sc`: Rancher local-path
+### Reference only: Rancher local-path scratch storage
 
 The "viya-scratch-sc" storage class is intended for use by [SASWORK and CAS_DISK_CACHE](/3SSC-Three-Starter-Storage-Classes/). SAS Programming Runtime Environment (including SAS Batch, SAS Compute, and SAS Connect Servers) and the SAS Cloud Analytic Services (CAS) rely on this space for low-latency and high-throughput - something local disk in the cloud does well for little additional cost.
 
@@ -1354,7 +1644,7 @@ Local disk on a node is not a given. It takes extra steps for a site to format a
     kubectl apply -f defineSC_viya-scratch-sc.yaml
     ```
 
-### RWX storage for `viya-shared-sc`: NFS Server
+### Reference only: external NFS Server RWX storage
 
 The "viya-shared-sc" storage class is intended for use by [services that need persistent RWX volumes](/3SSC-Three-Starter-Storage-Classes/). SAS Viya services like sas-backup-job, sas-common-files, sas-pyconfig and others all need persistent RWX volumes so that multiple pods running on different nodes can access the same set of shared files.
 
@@ -1472,16 +1762,15 @@ The result:
 ```log
 $ kubectl get sc
 
-NAME              PROVISIONER             RECLAIMPOLICY   VOLUMEBINDINGMODE
+NAME                 PROVISIONER                  RECLAIMPOLICY   VOLUMEBINDINGMODE
 
-gp2               kubernetes.io/aws-ebs   Delete          WaitForFirstConsumer
-gp3               ebs.csi.aws.com         Delete          WaitForFirstConsumer
-local-path        rancher.io/local-path   Delete          WaitForFirstConsumer
-nfs               nfs.csi.k8s.io          Retain          WaitForFirstConsumer
+openebs-lvm          local.csi.openebs.io         Delete          WaitForFirstConsumer
+openebs-mayastor-3   io.openebs.csi-mayastor      Delete          Immediate
+openebs-nfs          nfs.csi.k8s.io               Retain          Immediate
 
-viya-scratch-sc   rancher.io/local-path   Retain          WaitForFirstConsumer
-viya-shared-sc    nfs.csi.k8s.io          Retain          WaitForFirstConsumer
-viya-standard-sc  ebs.csi.aws.com         Delete          WaitForFirstConsumer
+viya-scratch-sc      local.csi.openebs.io         Delete          WaitForFirstConsumer
+viya-shared-sc       nfs.csi.k8s.io               Retain          Immediate
+viya-standard-sc     io.openebs.csi-mayastor      Delete          Immediate
 ```
 
 > Note: this approach allows us to specify storage for Viya ***without modifying Viya's storage configuration***. Don't want "`local-path`" as the basis for "`viya-scratch-sc`"? Then use "`gp3`" instead.
