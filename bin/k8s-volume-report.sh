@@ -4,7 +4,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # k8s-volume-report.sh
-# Report Kubernetes pod volumes by namespace, pod name/pattern, or storage type.
+# Report Kubernetes pod volumes by namespace, pod name/pattern, storage type, or storage class.
 #
 # Dependencies: kubectl, jq
 
@@ -14,7 +14,8 @@ NAMESPACE=""
 POD_PATTERN=""
 VOL_TYPE=""
 CLAIM_NAME=""
-STORAGE_ONLY=false
+STORAGE_CLASS=""
+STORAGE_CLASS_SET=false
 
 # ─── Usage ────────────────────────────────────────────────────────────────────
 usage() {
@@ -28,7 +29,8 @@ Usage:
 
   k8s-volume-report.sh -n NAMESPACE -p 'GLOB*'
       Per-pod storage highlights for matching pods:
-        emptyDir count + hostPath / PVC / GeV detail table
+        emptyDir + hostPath / PVC / GeV detail table
+      Pods with only emptyDir volumes (or no relevant volumes) are omitted.
       Quote the glob pattern to prevent shell expansion.
 
   k8s-volume-report.sh -n NAMESPACE -t TYPE [-p GLOB]
@@ -40,12 +42,17 @@ Usage:
       PVC report: claim stats, CSI physical location, and pods using it.
       Running pods are listed first; completed/failed pods follow.
 
+  k8s-volume-report.sh -n NAMESPACE -s STORAGE_CLASS
+      Flat table of PVC and GeV volumes using exactly STORAGE_CLASS.
+      The POD column is shown once per pod; rows include access mode and size.
+      Wildcards and -p, -t, or -c cannot be combined with this mode.
+
 Options:
   -n  Kubernetes namespace (required)
   -p  Pod name or glob pattern (optional; filters all modes)
   -t  Volume type to search for (enables type-report mode)
   -c  PVC claim name (enables PVC report mode)
-  -s  Storage-only: in glob mode, suppress pods with no PVC/GeV/hostPath volumes
+  -s  Storage class (enables PVC/GeV storage-class report)
   -h  Show this help
 EOF
   exit "${1:-0}"
@@ -54,13 +61,13 @@ EOF
 die() { echo "ERROR: $*" >&2; exit 1; }
 
 # ─── Parse arguments ──────────────────────────────────────────────────────────
-while getopts ":n:p:t:c:sh" opt; do
+while getopts ":n:p:t:c:s:h" opt; do
   case $opt in
     n) NAMESPACE="$OPTARG" ;;
     p) POD_PATTERN="$OPTARG" ;;
     t) VOL_TYPE="$OPTARG" ;;
     c) CLAIM_NAME="$OPTARG" ;;
-    s) STORAGE_ONLY=true ;;
+    s) STORAGE_CLASS="$OPTARG"; STORAGE_CLASS_SET=true ;;
     h) usage 0 ;;
     :) die "Option -$OPTARG requires an argument" ;;
    \?) die "Unknown option: -$OPTARG" ;;
@@ -68,6 +75,13 @@ while getopts ":n:p:t:c:sh" opt; do
 done
 
 [[ -z "$NAMESPACE" ]] && { echo "Namespace (-n) is required." >&2; usage 1; }
+if [[ "$STORAGE_CLASS_SET" == true ]]; then
+  [[ -z "$STORAGE_CLASS" ]] && die "Storage class (-s) cannot be empty"
+  [[ "$STORAGE_CLASS" == *'*'* || "$STORAGE_CLASS" == *'?'* || "$STORAGE_CLASS" == *'['* ]] \
+    && die "Storage class (-s) must be an exact name; wildcards are not supported"
+  [[ -n "$POD_PATTERN" || -n "$VOL_TYPE" || -n "$CLAIM_NAME" ]] \
+    && die "Storage class (-s) cannot be combined with -p, -t, or -c"
+fi
 command -v kubectl &>/dev/null || die "kubectl not found in PATH"
 command -v jq     &>/dev/null || die "jq not found in PATH"
 
@@ -268,12 +282,12 @@ print_pod_detail() {
 #   Table: PVC → GeV → hostPath → emptyDir (all storage-relevant volume types)
 #   VOLUME NAME(36)  TYPE(10)  CLAIM/PATH(44)  ACCESS(8)  SC(18)  SIZE(11)  MEDIUM(8)
 #   Total width (with 2-space indent): 149
-#   -s flag suppresses pods that have no PVC/GeV/hostPath (emptyDir-only pods)
+#   Pods with no PVC/GeV/hostPath are suppressed (including emptyDir-only pods).
 print_pod_storage() {
   local pod_name="$1" pod_json="$2"
   local W=149
 
-  # Compute PVC/GeV/hostPath count (for -s) and total storage count (incl. emptyDir)
+  # Compute PVC/GeV/hostPath count and total storage count (including emptyDir).
   local counts
   counts=$(jq -r '
     (.spec.volumes // []) |
@@ -284,8 +298,8 @@ print_pod_storage() {
   local storage_count total_count
   read -r storage_count total_count <<< "$counts"
 
-  # In -s mode, skip pods with no PVC/GeV/hostPath entirely
-  if [[ "$STORAGE_ONLY" == true ]] && (( storage_count == 0 )); then
+  # Skip pods with no PVC/GeV/hostPath entirely.
+  if (( storage_count == 0 )); then
     return
   fi
 
@@ -310,7 +324,66 @@ print_pod_storage() {
     done
 }
 
-# ─── MODE 3: Namespace-wide summary ──────────────────────────────────────────
+# ─── MODE 3: Storage-class report — matching PVC and GeV volumes ─────────────
+# -s STORAGE_CLASS  Select PVC and GeV volumes using the exact storage class.
+print_storage_class_report() {
+  local W=125 pod_count=0 volume_count=0 last_pod=""
+
+  echo ""
+  printf "Storage Class Report — %s  namespace: %s\n" "$STORAGE_CLASS" "$NAMESPACE"
+  hr $W
+  printf "%-48s  %-34s  %-12s  %-8s  %-11s\n" \
+    "POD" "VOLUME NAME" "TYPE" "ACCESS" "SIZE"
+  hr $W
+
+  while IFS=$'\t' read -r pod_name vol_name vtype access size; do
+    if [[ "$pod_name" != "$last_pod" ]]; then
+      [[ -n "$last_pod" ]] && echo ""
+      printf "%-48s  %-34s  %-12s  %-8s  %-11s\n" \
+        "$(trunc "$pod_name" 48)" "$(trunc "$vol_name" 34)" \
+        "$vtype" "$access" "$size"
+      last_pod="$pod_name"
+      pod_count=$(( pod_count + 1 ))
+    else
+      printf "%-48s  %-34s  %-12s  %-8s  %-11s\n" \
+        "" "$(trunc "$vol_name" 34)" "$vtype" "$access" "$size"
+    fi
+    volume_count=$(( volume_count + 1 ))
+  done < <(jq -r --argjson pm "$PVC_MAP" --arg sc "$STORAGE_CLASS" '
+    [ .items[] |
+      . as $pod |
+      .metadata.name as $pod_name |
+      .spec.volumes[]? |
+      if .persistentVolumeClaim then
+        ($pm[.persistentVolumeClaim.claimName] //
+          {accessModes:"-",storageClass:"-",size:"?"}) as $info |
+        select($info.storageClass == $sc) |
+        [$pod_name, .name, "PVC", $info.accessModes, $info.size]
+      elif .ephemeral then
+        .ephemeral.volumeClaimTemplate.spec as $spec |
+        ($pm[($pod_name + "-" + .name)] // {
+          accessModes: ($spec.accessModes | map(
+            if   . == "ReadWriteMany"    then "RWX"
+            elif . == "ReadWriteOnce"    then "RWO"
+            elif . == "ReadOnlyMany"     then "ROX"
+            elif . == "ReadWriteOncePod" then "RWOP"
+            else . end) | join("/")),
+          storageClass: ($spec.storageClassName // "-"),
+          size:         ($spec.resources.requests.storage // "?")
+        }) as $info |
+        select($info.storageClass == $sc) |
+        [$pod_name, .name, "GeV", $info.accessModes, $info.size]
+      else empty
+      end
+    ] | sort_by(.[0], (if .[2] == "PVC" then 0 else 1 end), .[1]) | .[] | @tsv
+  ' <<< "$PODS_JSON")
+
+  hr $W
+  echo "" >&2
+  printf "%d pod(s) found.  %d volume(s) listed.\n" "$pod_count" "$volume_count" >&2
+}
+
+# ─── MODE 4: Namespace-wide summary ──────────────────────────────────────────
 print_namespace_summary() {
   # Use mapfile + per-line jq output to avoid bash IFS=$'\t' collapsing empty fields.
   local -a _v
@@ -368,7 +441,7 @@ print_namespace_summary() {
   echo ""
 }
 
-# ─── MODE 4: Type report — flat table of every volume of a given type ──────────
+# ─── MODE 5: Type report — flat table of every volume of a given type ──────────
 # -t TYPE [-p GLOB]  Rows sorted by pod name → volume name.
 # Pod name printed once per group; subsequent volumes in same pod show blank pod column.
 # Valid types: PVC, GeV, hostPath, emptyDir, configMap, secret, projected, downwardAPI
@@ -657,7 +730,7 @@ print_type_report() {
   printf "%d matching volume(s) found.\n" "$matched" >&2
 }
 
-# ─── MODE 5: PVC lookup — claim stats + CSI location + pod consumer table ─────
+# ─── MODE 6: PVC lookup — claim stats + CSI location + pod consumer table ─────
 # -c CLAIM_NAME  Lists key PVC/PV stats and every pod referencing the claim.
 #                Running pods are sorted first; phase-exited pods follow.
 print_pvc_report() {
@@ -767,6 +840,10 @@ print_pvc_report() {
 }
 
 # ─── Main ─────────────────────────────────────────────────────────────────────
+if [[ "$STORAGE_CLASS_SET" == true ]]; then
+  print_storage_class_report
+  exit 0
+fi
 if [[ -n "$CLAIM_NAME" ]]; then
   print_pvc_report
   exit 0

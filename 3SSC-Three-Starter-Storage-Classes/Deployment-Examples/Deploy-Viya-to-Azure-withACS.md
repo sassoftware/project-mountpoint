@@ -1,4 +1,4 @@
-# Deploy SAS Viya to Azure with 3 Starter Storage Classes
+# Deploy SAS Viya to Azure with 3 Starter Storage Classes (ACSv2)
 
 > Note this exercise specifies Azure Container Storage v2 to use the node-local NVMe disk for SASWORK and CAS_DISK_CACHE.
 

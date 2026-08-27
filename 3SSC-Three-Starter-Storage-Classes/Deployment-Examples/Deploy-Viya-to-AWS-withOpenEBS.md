@@ -1,4 +1,4 @@
-# Deploy SAS Viya to AWS with 3 Starter Storage Classes
+# Deploy SAS Viya to AWS with 3 Starter Storage Classes (OpenEBS)
 
 > Note this exercise relies on OpenEBS to provide Viya storage:
 > - replicated RWO block storage from three Mayastor local-NVMe pools
@@ -29,7 +29,7 @@ Here's the plan:
     - [Identify yourself to AWS](#identify-yourself-to-aws)
     - [Get the SAS Viya 4 Infrastructure-as-Code project](#get-the-sas-viya-4-infrastructure-as-code-project)
     - [Prepare OpenEBS node bootstrap scripts](#prepare-openebs-node-bootstrap-scripts)
-    - [Patch viya4-iac-aws for Amazon FSx, if needed](#patch-viya4-iac-aws-for-amazon-fsx-if-needed)
+    - [Patch viya4-iac-aws to specify ami type for default nodepool](#patch-viya4-iac-aws-to-specify-ami-type-for-default-nodepool)
     - [Build the viya4-iac-aws container](#build-the-viya4-iac-aws-container)
     - [Simplify commands](#simplify-commands)
     - [Setup SSH key](#setup-ssh-key)
@@ -538,13 +538,50 @@ chmod 0755 ~/viya4-iac-aws/files/custom-data/{mayastor-node-bootstrap.sh,openebs
 
 > The Mayastor script deliberately does not format the instance-store NVMe device. OpenEBS claims it later as a raw DiskPool. The LVM script creates `viya-scratch-vg` only on CAS and Compute nodes, whose local disk remains separate from Mayastor pool disks.
 
-### Patch viya4-iac-aws for Amazon FSx, if needed
+### Patch viya4-iac-aws to specify ami type for default nodepool
 
-> **This is an optional step** - but it is ***required*** if you intend to use the IAC to provision Amazon FSx for NetApp ONTAP resources.
+We need a way to tell AWS to provision "`AL2023_x86_64_STANDARD`" AMI type for the "default" nodepool. This is required so that OpenEBS pods can run there in case any OpenEBS-backed volumes will be used from those hosts.
 
-&star; Perform the tasks to [Patch IAC FSx module for IAM Policy](https://your-git-repo.example.com/GEL/workshops/Your_Project_Name-sas-viya-4-deployment-on-amazon-elastic-kubernetes-service/-/blob/main/07-Experimental/07-100-Storage_Patterns/07-110-Provision_Infrastructure/12-Get-viya4-iac-aws.md).
+If this isn't done, then the "`openebs-csi-node`" pods running in the "default" nodepool will be stuck in an Init state and any other pods also running in the "default" nodepool that need OpenEBS storage relying on that CSI driver will also get stuck.
 
-Then return here and continue.
+At the time of this writing, the viya4-iac-aws project doesn't provide a variable to specify the AMI type for the "default" nodepool as it does for the Viya-specific nodepools. So, we'll modify the IAC variable definitions to give us a way to do that.
+
+This will allow the custom-data script we defined for the "default" nodepool above to be rendered as AL2023 data that those nodes can use.
+
+1.  Edit two IAC files: "`variables.tf`" and "`locals.tf`"
+
+    ```bash
+    cd $HOME/viya4-iac-aws
+
+    # Add the default-pool AMI-type input before the default-pool disk settings.
+    sed -i '/^# Disk type for default node pool VMs. Supported:/i \
+    # EKS AMI type for the default managed node pool.\
+    variable "default_nodepool_ami_type" {\
+      description = "EKS AMI type for the default node pool."\
+      type        = string\
+      default     = "AL2023_x86_64_STANDARD"\
+    }\
+    ' variables.tf
+
+    # Pass that input to the EKS managed node group for the default pool.
+    sed -i '/instance_types = \[var.default_nodepool_vm_type\]/a \
+          ami_type       = var.default_nodepool_ami_type' locals.tf
+    ```
+
+1.  Verify the change as expected
+
+    ```bash
+    # Review changes to IAC files
+    git --no-pager diff -- variables.tf locals.tf
+    ```
+
+1.  Later on, when we create the TFVARS file that configures Terraform to deploy the resources we need for SAS Viya in AWS, look for the following line with the new variable we defined:
+
+    ```terraform
+    default_nodepool_ami_type = "AL2023_x86_64_STANDARD"
+    ```
+
+    > To be clear, "`default_nodepool_ami_type`" is a new terraform variable we just defined. For an unmodified IAC project, it won't work unless you repeat the steps to modify "`variables.tf`" and "`locals.tf`".
 
 ### Build the viya4-iac-aws container
 
@@ -644,52 +681,20 @@ The viya4-iac-aws project offers [three main options for shared (RWX) storage](h
 >
 > The OpenEBS storage section installs an NFS server backed by a replicated Mayastor PVC. The IAC's NFS server as well as Amazon EFS and FSx remain alternatives for a production RWX implementation.
 
-**Select one of the following** and execute the command given to set an environment variable with the appropriate IAC parameters:
+Execute the command given to set an environment variable with the appropriate parameters for the IAC to stand up its NFS server:
 
--   Basic, no-frills NFS Server   **<<== PICK THIS ONE**
-
-    ```sh
-    RWX_STORAGE_PROVIDER=$(cat << 'EOF'
-    # Basic NFS Server (m6in.xlarge) for RWX volumes
-    storage_type             = "standard"
-    create_nfs_public_ip     = false
-    nfs_vm_admin             = "nfsuser"
-    nfs_raid_disk_size       = 128
-    nfs_raid_disk_type       = "gp2"     # or io1/2, sc1, st2, standard
-    nfs_raid_disk_iops       = 0         # for io1/2 only
-    EOF
-    )
-    ```
-
-    > Note: I haven't added the necessary decisions/actions for the other storage to this exercise yet - but I have thoroughly tested them all. :)
-
--   Amazon Elastic File Storage (EFS)
-
-    ```sh
-    RWX_STORAGE_PROVIDER=$(cat << 'EOF'
-    # Amazon EFS storage for RWX volumes
-    storage_type                            = "ha"
-    efs_performance_mode                    = "generalPurpose"
-    EOF
-    )
-    ```
-
--   Amazon FSx for NetApp ONTAP (FSx)
-
-    ```sh
-    RWX_STORAGE_PROVIDER=$(cat << 'EOF'
-    # Amazon FSx for NetApp ONTAP for RWX (and RWO) volumes
-    storage_type                                   = "ha"
-    storage_type_backend                           = "ontap"
-    aws_fsx_ontap_deployment_type                  = "SINGLE_AZ_1"     # or MULTI_AZ_1
-    aws_fsx_ontap_file_system_storage_capacity     = "1024"            # up to 196608
-    aws_fsx_ontap_file_system_throughput_capacity  = "512"             # up to 4096
-    aws_fsx_ontap_fsxadmin_password                = "ThePowerToKnow123!"
-    EOF
-    )
-    ```
-
-    > Reminder to perform the tasks to [Patch IAC FSx module for IAM Policy](https://your-git-repo.example.com/GEL/workshops/Your_Project_Name-sas-viya-4-deployment-on-amazon-elastic-kubernetes-service/-/blob/main/07-Experimental/07-100-Storage_Patterns/07-110-Provision_Infrastructure/12-Get-viya4-iac-aws.md) (including rebuilding the IAC container) if using FSx storage.
+```sh
+RWX_STORAGE_PROVIDER=$(cat << 'EOF'
+# Basic NFS Server (m6in.xlarge) for RWX volumes
+storage_type             = "standard"
+create_nfs_public_ip     = false
+nfs_vm_admin             = "nfsuser"
+nfs_raid_disk_size       = 128
+nfs_raid_disk_type       = "gp2"     # or io1/2, sc1, st2, standard
+nfs_raid_disk_iops       = 0         # for io1/2 only
+EOF
+)
+```
 
 ### Configure Terraform for desired AWS resources
 
@@ -754,6 +759,7 @@ The IAC is driven by a terraform variables file that we must create. As shown he
     kubernetes_version           = "$K8S_VERSION"
     default_nodepool_node_count  = 2
     default_nodepool_vm_type     = "m7i-flex.2xlarge"       # 8 vCPU, 32 GiB, no local disk
+    default_nodepool_ami_type    = "AL2023_x86_64_STANDARD" # custom variable so OpenEBS can run here
     default_nodepool_custom_data = "/workspace/files/custom-data/openebs-nfs-client-bootstrap.sh"
 
     ## Shared storage provider
@@ -1185,6 +1191,8 @@ This is the active storage path for this exercise. It uses:
     kubectl get pods -n "${OPENEBS_NAMESPACE}"
     ```
 
+    Installation and readiness of OpenEBS takes approximately 5 minutes.
+
 1. Create one Mayastor DiskPool for each node labeled `openebs.io/engine=mayastor`.
 
     The IAC bootstrap creates `/dev/disk/by-id/openebs-mayastor` on each Mayastor node as a canonical link to its raw instance-store NVMe disk. The following command generates one DiskPool per labeled node; it requires exactly three nodes.
@@ -1387,7 +1395,7 @@ This is the active storage path for this exercise. It uses:
 1. Define the OpenEBS NFS-backed RWX provider class:
 
     ```bash
-    # define the NFS storage class backed OpenEBS 
+    # define the NFS storage class backed by OpenEBS 
     cat << EOF > $HOME/project/deploy/defineOpenEBS_NFS_StorageClass.yaml
     apiVersion: storage.k8s.io/v1
     kind: StorageClass
@@ -1494,7 +1502,7 @@ viya-shared-sc       nfs.csi.k8s.io               Retain          Immediate
 viya-standard-sc     io.openebs.csi-mayastor      Delete          Immediate
 ```
 
-> Note: this approach allows us to specify storage for Viya ***without modifying Viya's storage configuration***. Don't want "`local-path`" as the basis for "`viya-scratch-sc`"? Then use "`gp3`" instead.
+> Note: this approach allows us to specify storage for Viya ***without modifying Viya's storage configuration***. Don't want "`openebs-lvm`" as the basis for "`viya-scratch-sc`"? Then use "`openebs-hostpath`" (local disk) or "`openebs-single-replica`" (block storage) instead.
 
 ## Provision and configure supporting 3rd-party resources
 

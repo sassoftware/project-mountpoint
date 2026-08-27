@@ -765,12 +765,6 @@ The IAC is driven by a terraform variables file that we must create. As shown he
     create_jump_vm                        = true
     jump_vm_admin                         = "jumpuser"
     jump_vm_type                          = "t3.small"
-
-    # NFS Server
-    # only used when storage_type is "standard" to create NFS Server VM
-    create_nfs_public_ip                  = false
-    nfs_vm_admin                          = "nfsuser"
-    nfs_vm_type                           = "m7i-flex.xlarge"
     EOF
     ```
 
