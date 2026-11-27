@@ -229,7 +229,7 @@ Or, to run your test in batch, use the sas-viya CLI to submit some SASWORK-heavy
     ```sh
     # Submit the SAS program to run in "default" Batch Context
     # (assuming 3SSC, is using node-local NVME disk from viya-scratch-sc)
-    sas-viya batch jobs submit-pgm --context pmp-batch-saswork-rwx-bc --pgm $PMP_HOME/bin/test-saswork-io.sas --wait
+    sas-viya batch jobs submit-pgm --context default --pgm $PMP_HOME/bin/test-saswork-io.sas --wait
     ```
 
     The sas-viya CLI provides status:

@@ -59,7 +59,7 @@ Here's the plan:
 
 The deployment process here is heavily borrowed from the [SAS® Viya®: Deployment on Google Kubernetes Engine](https://learn.sas.com/course/view.php?id=7115) (learn.sas.com) workshop.
 
-> Currently optimized for SAS Viya at LTS-2026.03 running on Kubernetes 1.32.x - 1.35.x. These align with Red Hat OCP or OKE 4.19.x – 4.21.x.
+> Currently optimized for SAS Viya at LTS-2026.09 running on Kubernetes 1.34.x - 1.36.x. These align with Red Hat OCP or OKE 4.21.x, 4.22.x, 5.0.x.
 
 
 
@@ -119,7 +119,7 @@ Let's get SAS Viya order assets and configure them.
     ```bash
     # Desired version of SAS Viya
     export MY_CADENCE_NAME='lts'
-    export MY_CADENCE_VERSION='2026.03'
+    export MY_CADENCE_VERSION='2026.09'
 
     # Remember it
     add_my_var MY_CADENCE_NAME
@@ -161,7 +161,7 @@ Let's get SAS Viya order assets and configure them.
     Recalled current workshop state:
     ---
     MY_CADENCE_NAME=lts
-    MY_CADENCE_VERSION=2026.03
+    MY_CADENCE_VERSION=2026.09
     MY_NS=viya
     MY_ORDERNUM=9D1ZB7
     MY_PREFIX=envoy-p41814

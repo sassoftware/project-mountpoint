@@ -63,7 +63,7 @@ Here's the plan:
 
 The deployment process here is heavily borrowed from the [SAS® Viya®: Deployment on Google Kubernetes Engine](https://learn.sas.com/course/view.php?id=7115) (learn.sas.com) workshop.
 
-> Currently optimized for SAS Viya at LTS-2026.03 running on Kubernetes 1.32.x - 1.35.x.
+> Currently optimized for SAS Viya at LTS-2026.09 running on Kubernetes 1.34.x - 1.36.x.
 
 
 
@@ -127,7 +127,7 @@ Let's get SAS Viya order assets and configure them.
     ```bash
     # Desired version of SAS Viya
     export MY_CADENCE_NAME='lts'
-    export MY_CADENCE_VERSION='2026.03'
+    export MY_CADENCE_VERSION='2026.09'
 
     # Remember it
     add_my_var MY_CADENCE_NAME
@@ -169,7 +169,7 @@ Let's get SAS Viya order assets and configure them.
     Recalled current workshop state:
     ---
     MY_CADENCE_NAME=lts
-    MY_CADENCE_VERSION=2026.03
+    MY_CADENCE_VERSION=2026.09
     MY_NS=viya
     MY_ORDERNUM=9D1ZB7
     MY_PREFIX=envoy-p41814
@@ -529,7 +529,7 @@ The IAC is driven by a terraform variables file that we must create. As shown he
 1.  Create the TF Vars file to drive infrastructure:
 
     ```bash
-    K8S_VERSION="1.33"
+    K8S_VERSION="1.35"
     SA_KEY_FILE="$HOME/.gel-sas-installer.json"
 
     # Start the Terraform variables file for the IAC
@@ -763,9 +763,9 @@ It will take 8-10 minutes for Terraform to complete the provisioning of resource
     With results similar to:
 
     ```log
-    Client Version: v1.33.13
-    Kustomize Version: v5.6.0
-    Server Version: v1.33.13-gke.1101000
+    Client Version: v1.35.3
+    Kustomize Version: v5.7.1
+    Server Version: v1.35.9-gke.1101000
     ```
 
     > Note: The Client version and Server version numbers should match now.

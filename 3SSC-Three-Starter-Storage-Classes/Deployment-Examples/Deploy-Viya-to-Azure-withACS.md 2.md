@@ -66,7 +66,7 @@ Here's the plan:
 
 The deployment process here is heavily borrowed from the [SAS® Viya®: Deployment on Azure Kubernetes Service](https://learn.sas.com/course/view.php?id=6419) (learn.sas.com) workshop.
 
-> Currently optimized for SAS Viya at LTS-2026.03 running on Kubernetes 1.32.x - 1.35.x.
+> Currently optimized for SAS Viya at LTS-2026.09 running on Kubernetes 1.34.x - 1.36.x.
 
 
 
@@ -132,7 +132,7 @@ Let's get SAS Viya order assets and configure them.
     ```bash
     # Desired version of SAS Viya
     export MY_CADENCE_NAME='lts'
-    export MY_CADENCE_VERSION='2026.03'
+    export MY_CADENCE_VERSION='2026.09'
 
     # Remember it
     #add_my_var MY_CADENCE_NAME
@@ -692,9 +692,9 @@ With the terraform variables all defined, now we can provision the infrastructur
     With results similar to:
 
     ```log
-    Client Version: v1.34.9
+    Client Version: v1.35.3
     Kustomize Version: v5.7.1
-    Server Version: v1.34.9
+    Server Version: v1.35.9
     ```
 
     > Note: The Client version and Server version numbers should match now.

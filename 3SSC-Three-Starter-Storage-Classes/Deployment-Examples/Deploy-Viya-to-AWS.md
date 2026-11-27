@@ -69,7 +69,7 @@ Here's the plan:
 
 The deployment process here is heavily borrowed from the [SAS® Viya®: Deployment on Amazon Elastic Kubernetes Service](https://learn.sas.com/course/view.php?id=6972) (learn.sas.com) workshop.
 
-> Currently optimized for SAS Viya at LTS-2026.03 running on Kubernetes 1.32.x - 1.35.x.
+> Currently optimized for SAS Viya at LTS-2026.09 running on Kubernetes 1.34.x - 1.36.x.
 
 
 
@@ -116,11 +116,17 @@ Let's get SAS Viya order assets and configure them.
     # Pick the name of the namespace for Viya
     export MY_NS=viya
 
+    # Desired version of SAS Viya
+    export MY_CADENCE_NAME='lts'
+    export MY_CADENCE_VERSION='2026.09'
+
     # Determine the FQDN we want for Viya urls
     export MY_VIYA_FQDN="${MY_PREFIX}-${MY_NS}.aws.example.com"
 
     # Remember it for later
     add_my_var MY_NS
+    add_my_var MY_CADENCE_NAME
+    add_my_var MY_CADENCE_VERSION
     add_my_var MY_PREFIX
     add_my_var MY_VIYA_FQDN
 
@@ -130,22 +136,9 @@ Let's get SAS Viya order assets and configure them.
 
 1.  Download the SAS Viya order assets
 
-    ```bash
-    # Desired version of SAS Viya
-    export MY_CADENCE_NAME='lts'
-    export MY_CADENCE_VERSION='2026.03'
+    > See _SAS® Viya® Platform Operations_ > Pre-installation Tasks > [Retrieve Required Files](https://documentation.sas.com/?cdcId=itopscdc&cdcVersion=default&docsetId=dplyml0phy0dkr&docsetTarget=n1wwpl7qzfdb5rn1gwfx84tfgj5d.htm)
 
-    # Remember it
-    add_my_var MY_CADENCE_NAME
-    add_my_var MY_CADENCE_VERSION
-
-    # Generate the sas-bases assets
-    bash /opt/gellow_code/scripts/common/generate_sas_bases.sh \
-    --cadence-name ${MY_CADENCE_NAME} \
-    --cadence-version ${MY_CADENCE_VERSION} \
-    --order-nickname 'simple' \
-    --output-folder ~/project/deploy/${MY_NS}
-    ```
+    
 
 1.  Let's get the actual order number from the downloaded file and then remember all this for later:
 
@@ -175,7 +168,7 @@ Let's get SAS Viya order assets and configure them.
     Recalled current workshop state:
     ---
     MY_CADENCE_NAME=lts
-    MY_CADENCE_VERSION=2026.03
+    MY_CADENCE_VERSION=2026.09
     MY_NS=viya
     MY_ORDERNUM=9D1ZB7
     MY_PREFIX=envoy-p41814
@@ -626,7 +619,7 @@ The IAC is driven by a terraform variables file that we must create. As shown he
 1.  Create the TF Vars file to drive infrastructure:
 
     ```bash
-    K8S_VERSION="1.33"
+    K8S_VERSION="1.35"
 
     # Create the Terraform variables file for the IAC
     cat << EOF > ~/viya4-iac-aws/${MY_PREFIX}.tfvars
@@ -868,9 +861,9 @@ It will take 20-30 minutes for Terraform to complete the provisioning of resourc
     With results similar to:
 
     ```log
-    Client Version: v1.32.9
-    Kustomize Version: v5.5.0
-    Server Version: v1.32.9-eks-3025e55
+    Client Version: v1.35.3
+    Kustomize Version: v5.7.1
+    Server Version: v1.35.9-eks-91f89a9
     ```
 
     > Note: The Client version and Server version numbers should match now.
@@ -2042,8 +2035,6 @@ This is an important step - some of [these resources cost money](https://calcula
     fi
     ```
 
-### Destroy cloud resources
-
 1.  Delete the DNS aliases
 
     There's no automatic approach (yet) to clean up orphaned DNS alias records in our environment. So, we need you to delete your records. Here's a script to make it easy:
@@ -2053,6 +2044,30 @@ This is an important step - some of [these resources cost money](https://calcula
 
     bash $HOME/project-mountpoint/bin/gel_dns-deleteAlias.sh
     ```
+
+1.  Uninstall other software supporting SAS Viya
+
+    ```bash
+    # Find related namespace(s)
+    VIYA_NS=$(kubectl get ns | grep 'projectcontour\|ingress-nginx\|gelldap' | awk '{ print $1 }')
+
+    if [ "$VIYA_NS" != "" ]
+    then
+        for VNS in $VIYA_NS
+        do
+            # Announce
+            echo -e "\n---\n$(kubectl get ns $VNS)\n"
+
+            kubectl delete ns $VNS --ignore-not-found=true
+        done
+    else
+        echo -e "\n---\nNo related software namespaces to delete."
+    fi
+    ```
+
+    > Installing an ingress controller triggers AWS to provision a physical network load balancer. It seems that not explicitly deleting the ingress controller will cause AWS to hang on to the NLB, and then Terraform has difficulty deleting the NLB as a result.
+
+### Destroy cloud resources
 
 1.  Remove the IAM Roles we created to support the CSI Drivers for AWS resources
 
